@@ -22,3 +22,37 @@ easy:
       description: "Delayed order due to missing component constraint."
       affected_orders: ["ORD_101"]
       severity: 2
+
+medium:
+  name: "Inventory Shortage"
+  time_step: 0
+  worker_availability: 2
+  inventory_status:
+    "high_demand_item": 1  # Below necessary threshold
+  robots:
+    - id: "R1"
+      location: [1, 5]
+      status: "ACTIVE"
+      battery_level: 80.0
+      assigned_task: "ORD_201"
+    - id: "R2"
+      location: [8, 5]
+      status: "ACTIVE"
+      battery_level: 65.0
+      assigned_task: "ORD_202"
+  blocked_paths:
+    # Defining narrow corridors using blocked paths on the top and bottom of the aisle
+    - id: "BP_002"
+      location: [4, 4]
+      obstruction_type: "spilled_liquid"
+      severity: "MEDIUM"
+    - id: "BP_003"
+      location: [4, 6]
+      obstruction_type: "boxes"
+      severity: "MEDIUM"
+  active_exceptions:
+    - id: "EX_002"
+      type: "SHORTAGE"
+      description: "Multiple high-priority orders require out-of-stock components."
+      affected_orders: ["ORD_201", "ORD_202"]
+      severity: 4
