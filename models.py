@@ -71,3 +71,48 @@ class BlockedPath(BaseModel):
     location: Tuple[int, int] = Field(..., description="The (x, y) coordinates of the blockage")
     obstruction_type: str = Field(..., description="Description of the obstruction type")
     severity: ObstructionSeverity = Field(..., description="Impact level of the obstruction")
+
+class ExceptionIssue(BaseModel):
+    """
+    Represents a logistical failure that requires agent intervention.
+    
+    Attributes:
+        id (str): Unique exception identifier.
+        type (ExceptionType): The category of the exception.
+        description (str): Human-readable explanation of the issue.
+        affected_orders (List[str]): List of order IDs delayed or impacted by this issue.
+        severity (int): Scale of 1 to 5 indicating priority/severity.
+    """
+    id: str = Field(..., description="Unique exception identifier")
+    type: ExceptionType = Field(..., description="The category of the exception")
+    description: str = Field(..., description="Explanation of the issue")
+    affected_orders: List[str] = Field(..., description="Order IDs impacted by this issue")
+    severity: int = Field(..., description="Scale of 1 to 5 indicating priority", ge=1, le=5)
+
+
+class WarehouseState(BaseModel):
+    """
+    The complete Observation Space representing the current environment state.
+    This model is strictly structured to serialize seamlessly to JSON, supporting state persistence.
+    
+    Attributes:
+        time_step (int): Current simulation step.
+        worker_availability (int): Count of human workers available for assignment.
+        inventory_status (Dict[str, int]): Map of item IDs to their current stock levels.
+        robots (List[Robot]): Real-time statuses of all warehouse robots.
+        blocked_paths (List[BlockedPath]): Known grid obstructions.
+        active_exceptions (List[ExceptionIssue]): Outstanding issues requiring agent action.
+    """
+    time_step: int = Field(..., description="Current simulation step", ge=0)
+    worker_availability: int = Field(..., description="Count of human workers available", ge=0)
+    inventory_status: Dict[str, int] = Field(
+        default_factory=dict, description="Item IDs mapped to stock levels"
+    )
+    robots: List[Robot] = Field(default_factory=list, description="All warehouse robots")
+    blocked_paths: List[BlockedPath] = Field(default_factory=list, description="Known grid obstructions")
+    active_exceptions: List[ExceptionIssue] = Field(
+        default_factory=list, description="Outstanding logistical issues"
+    )
+    config: Dict[str, Any] = Field(
+        default_factory=dict, description="Dynamic thresholds loaded from scenarios.yaml"
+    )
