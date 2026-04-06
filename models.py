@@ -116,3 +116,35 @@ class WarehouseState(BaseModel):
     config: Dict[str, Any] = Field(
         default_factory=dict, description="Dynamic thresholds loaded from scenarios.yaml"
     )
+
+class LogisticsCommand(BaseModel):
+    """
+    The Action Space representing interventions requested by the RL agent.
+    
+    Attributes:
+        command_type (CommandType): The Enum category of the action.
+        target_id (Optional[str]): Unique identifier of the robot, exception, or order.
+        parameters (Optional[Dict[str, Union[str, int, float, List[int]]]]): Additional flexible parameters.
+    """
+    command_type: CommandType = Field(..., description="The action category")
+    target_id: Optional[str] = Field(None, description="Identifier of the target entity")
+    parameters: Optional[Dict[str, Union[str, int, float, List[int], List[str]]]] = Field(
+        default_factory=dict,
+        description="Flexible key-value pairs for command parameters (supports mixed types)"
+    )
+    
+class LogisticsCommand(BaseModel):
+    """
+    The Action Space representing interventions requested by the RL agent.
+    
+    Attributes:
+        command_type (CommandType): The Enum category of the action.
+        target_id (Optional[str]): Unique identifier of the robot, exception, or order.
+        parameters (Optional[Dict[str, Union[str, int, float, List[int]]]]): Additional flexible parameters.
+    """
+    command_type: CommandType = Field(..., description="The action category")
+    target_id: Optional[str] = Field(None, description="Identifier of the target entity")
+    parameters: Optional[Dict[str, Union[str, int, float, List[int], List[str]]]] = Field(
+        default_factory=dict,
+        description="Flexible key-value pairs for command parameters (supports mixed types)"
+    )
