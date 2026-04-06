@@ -89,46 +89,49 @@ Firstly you'll need your own API keys,LLM models and their Base URL's.
 ## System Architecture & Logical Flow 
 ```mermaid
  flowchart LR
-    %% Layers Definition
-    subgraph Presentation_Layer["API & UI Layer"]
-        App["app.py"]
+    %% Custom UI Colors
+    classDef blockNode fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#dfe6e9,rx:8px,ry:8px;
+    classDef dataNode fill:#2d3436,stroke:#55efc4,stroke-width:2px,color:#dfe6e9;
+    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff,shape:circle;
+
+    %% 1. Force Agent as the absolute FIRST component on the Left
+    subgraph Trigger [User Space]
+        Agent((User / Agent)):::actorNode
     end
 
-    subgraph Core_Layer["Core Physics & Logic"]
-        direction TB
-        Env["environment.py"]
-        Models["models.py"]
-        Utils["utils.py"]
-        Config[("openenv.yaml / configs")]
+    %% 2. Presentation Layer cleanly side-by-side
+    subgraph Presentation [API & UI Layer]
+        App["app.py"]:::blockNode
     end
 
-    subgraph Evaluation_Layer["Task Validation"]
-        Tasks["tasks.py"]
+    %% 3. Core system side-by-side
+    subgraph Core [Core Physics & Logic]
+        Env["environment.py"]:::blockNode
+        Models["models.py"]:::blockNode
+        Utils["utils.py"]:::blockNode
+        Config[("openenv.yaml")]:::dataNode
     end
 
-    %% Interaction Flow
-    Agent(("User / Agent")) -- "1. Takes Action" --> App
-    App -- "2. Step / Reset" --> Env
-    Env -. "Data Schemas" .-> Utils
-    Env -- "5. Load Scenarios" --> Config
-    Env -- "6. Evaluate State" --> Tasks
-    Tasks -- "7. Reward & Done" --> Env
-    Env -- "8. Generate Observation" --> App
-    App -- "9. Display & JSON" --> Agent
+    %% 4. Task Check side-by-side
+    subgraph Eval [Task Validation]
+        Tasks["tasks.py"]:::blockNode
+    end
 
-    %% Styling Classes
-    classDef fileNode fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#dfe6e9,rx:8px,ry:8px
-    classDef dataNode fill:#2d3436,stroke:#55efc4,stroke-width:2px,color:#dfe6e9
-    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff,shape:circle
+    %% Forward Flow (Engine routes automatically left to right)
+    Agent -->|1. Takes Action| App
+    App -->|2. Step / Reset| Env
+    
+    Env -.->|3. Data Schemas| Models
+    Env -.->|4. Helpers Script| Utils
+    Env -->|5. Load Params| Config
+    
+    Env -->|6. Check Status| Tasks
+    
+    %% Return Feedback Flow (Engine wraps arrows around boxes neatly)
+    Tasks -->|7. Evaluated Reward| Env
+    Env -->|8. Observation Array| App
+    App -->|9. Update UI & JSON| Agent
 
-    %% Applying Classes
-    App:::fileNode
-    Env:::fileNode
-    Models:::fileNode
-    Utils:::fileNode
-    Config:::dataNode
-    Tasks:::fileNode
-    Agent:::actorNode
 
 ```    
 ## Core Mission
