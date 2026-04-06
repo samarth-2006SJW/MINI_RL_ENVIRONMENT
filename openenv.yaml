@@ -1,0 +1,24 @@
+name: warehouse-logistics-v1
+version: 0.1.0
+description: "Warehouse Logistics Exception Handler RL environment built for OpenEnv"
+tags:
+  - logistics
+  - robotics
+  - multi-agent
+
+# Connects the OpenEnv runtime to your primary Python class
+entry_point: environment:WarehouseEnvironment
+
+# Strictly binds the environment API to your Pydantic schemas (The Contract)
+schemas:
+  observation_space: models:WarehouseState
+  action_space: models:LogisticsCommand
+
+# Environment Operational Specifications
+specs:
+  max_steps: 100
+  supports_reset: true
+  render_modes:
+    - human
+    - rgb_array
+    - json
