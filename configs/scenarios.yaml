@@ -56,3 +56,47 @@ medium:
       description: "Multiple high-priority orders require out-of-stock components."
       affected_orders: ["ORD_201", "ORD_202"]
       severity: 4
+
+
+hard:
+  name: "Cascading Failure"
+  time_step: 0
+  worker_availability: 1
+  inventory_status:
+    "tools": 5
+  robots:
+    - id: "R1"
+      location: [5, 5]
+      status: "MAINTENANCE"
+      battery_level: 5.0
+      assigned_task: "ORD_301"
+    - id: "R2"
+      location: null  # Wildcard active! No coordinates.
+      status: "SENSOR_FAILURE"
+      battery_level: 45.0
+      assigned_task: null
+    - id: "R3"
+      location: [6, 6]
+      status: "MAINTENANCE"
+      battery_level: 2.0
+      assigned_task: "ORD_302"
+  blocked_paths:
+    - id: "BP_004"
+      location: [5, 5]
+      obstruction_type: "broken_robot_R1_debris"
+      severity: "HIGH"
+    - id: "BP_005"
+      location: [5, 6]
+      obstruction_type: "broken_robot_collision_debris"
+      severity: "HIGH"
+  active_exceptions:
+    - id: "EX_003"
+      type: "BREAKDOWN"
+      description: "Robot R1 breakdown in main intersection causing traffic halts."
+      affected_orders: ["ORD_301"]
+      severity: 5
+    - id: "EX_004"
+      type: "BREAKDOWN"
+      description: "Robot R3 breakdown cascading from primary collision."
+      affected_orders: ["ORD_302"]
+      severity: 5
