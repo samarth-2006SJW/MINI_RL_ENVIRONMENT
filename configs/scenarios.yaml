@@ -1,0 +1,24 @@
+easy:
+  name: "Minor Delay"
+  time_step: 0
+  worker_availability: 5
+  inventory_status:
+    "component_A": 50
+    "component_B": 100
+  robots:
+    - id: "R1"
+      location: [2, 2]
+      status: "ACTIVE"
+      battery_level: 95.0
+      assigned_task: null
+  blocked_paths:
+    - id: "BP_001"
+      location: [2, 3]
+      obstruction_type: "fallen_pallet"
+      severity: "LOW"
+  active_exceptions:
+    - id: "EX_001"
+      type: "DELAY"
+      description: "Delayed order due to missing component constraint."
+      affected_orders: ["ORD_101"]
+      severity: 2
