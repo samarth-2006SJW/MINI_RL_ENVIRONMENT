@@ -32,7 +32,7 @@ The Automated Warehouse Logistics Exception Handler is a high-fidelity Mini Rein
 
     git remote add origin "https://github.com/samarth-2006SJW/MINI_RL_ENVIRONMENT.git"
 
- After this go into  the MINI_RL_ENVIRONMENT folder by running:
+ Navigate to MINI_RL_ENVIRONMENT folder by running:
 
     cd MINI_RL_ENVIRONMENT
 
@@ -50,6 +50,7 @@ For macOS/Linux users:
 #### Step 3: Installing Dependencies
     pip install --upgrade pip
     pip install -r requirements.txt
+
 * This will install essential libraries including fastapi, uvicorn, openenv-core, and pydantic.
 
 #### Step 4:Running the application
@@ -68,9 +69,22 @@ Firstly you'll need your own API keys,LLM models and their Base URL's.
 
     $env:LLM_MODEL="paste-model-you-use"
 
-    
+* For macOS/Linux users run:
 
+`# Set your OpenAI API Key`
 
+    export OPENAI_API_KEY="your-api-key-here"
+
+`# Set the base URL for the LLM provider`
+
+    export LLM_BASE_URL="https://api.openai.com/v1"
+
+`# Specify the model you want the agent to use`
+
+    export LLM_MODEL="gpt-4o"
+* Now run:
+
+      python app.py
 
 ## Core Mission
 
@@ -83,3 +97,4 @@ Firstly you'll need your own API keys,LLM models and their Base URL's.
 * Multi-Objective Optimization: Balancing speed of resolution against resource costs and operational penalties.
 
 By utilizing a modular architecture—separating "The Physics" (environment logic) from "The Judge" (grading logic)—this project provides a rigorous testing ground for LLM-based agents and traditional RL models to prove they can handle the chaotic edge cases of real-world logistics.
+
