@@ -34,3 +34,40 @@ class CommandType(str, Enum):
     ASSIGN_WORKER = "ASSIGN_WORKER"
     RE_POLL_SENSOR = "RE_POLL_SENSOR"
     WAIT = "WAIT"
+
+class Robot(BaseModel):
+    """
+    Represents a single automated transport robot within the warehouse.
+    
+    Attributes:
+        id (str): Unique identifier for the robot.
+        location (Optional[Tuple[int, int]]): The (x, y) grid coordinates. None if SENSOR_FAILURE.
+        status (RobotStatus): Operating condition of the robot.
+        battery_level (float): Remaining battery from 0.0 to 100.0.
+        assigned_task (Optional[str]): ID of the current assigned order or task.
+    """
+    id: str = Field(..., description="Unique identifier for the robot")
+    location: Optional[Tuple[int, int]] = Field(
+        None, description="The (x, y) grid coordinates. None if SENSOR_FAILURE"
+    )
+    status: RobotStatus = Field(..., description="Operating condition of the robot")
+    battery_level: float = Field(
+        ..., description="Remaining battery from 0.0 to 100.0", ge=0.0, le=100.0
+    )
+    assigned_task: Optional[str] = Field(None, description="ID of the current assigned order or task")
+
+
+class BlockedPath(BaseModel):
+    """
+    Represents an obstruction in the warehouse grid.
+    
+    Attributes:
+        id (str): Unique identifier for the blockage.
+        location (Tuple[int, int]): The (x, y) coordinates of the blockage.
+        obstruction_type (str): Text description of what is blocking the path.
+        severity (ObstructionSeverity): The impact level of the obstruction.
+    """
+    id: str = Field(..., description="Unique identifier for the blockage")
+    location: Tuple[int, int] = Field(..., description="The (x, y) coordinates of the blockage")
+    obstruction_type: str = Field(..., description="Description of the obstruction type")
+    severity: ObstructionSeverity = Field(..., description="Impact level of the obstruction")
