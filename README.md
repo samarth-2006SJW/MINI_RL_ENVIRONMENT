@@ -86,6 +86,44 @@ Firstly you'll need your own API keys,LLM models and their Base URL's.
 
       python app.py
 
+## System Architecture & Logical Flow 
+```mermaid
+ flowchart LR
+ subgraph Presentation_Layer["API & UI Layer"]
+        App["app.py"]
+  end
+ subgraph Core_Layer["Core Physics & Logic"]
+    direction TB
+        Env["environment.py"]
+        Models["models.py"]
+        Utils["utils.py"]
+        Config[("openenv.yaml / configs")]
+  end
+ subgraph Evaluation_Layer["Task Validation"]
+        Tasks["tasks.py"]
+  end
+    Agent(("User / Agent")) -- "1. Takes Action" --> App
+    App -- "2. Step / Reset" --> Env
+    Env -. s17 Data Schemas .-> Utils
+    Env -- "5. Load Scenarios" --> Config
+    Env -- "6. Evaluate State" --> Tasks
+    Tasks -- "7. Reward & Done" --> Env
+    Env -- "8. Generate Observation" --> App
+    App -- "9. Display & JSON" --> Agent
+    Presentation_Layer --> n1["Untitled Node"]
+
+     App:::fileNode
+     Env:::fileNode
+     Models:::fileNode
+     Utils:::fileNode
+     Config:::dataNode
+     Tasks:::fileNode
+     Agent:::actorNode
+    classDef fileNode fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#dfe6e9,rx:8px,ry:8px
+    classDef dataNode fill:#2d3436,stroke:#55efc4,stroke-width:2px,color:#dfe6e9
+    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff,shape:circle
+
+```    
 ## Core Mission
 
  Unlike standard pathfinding simulations, this project focuses on Decision Intelligence under Uncertainty. The agent is tasked with:
