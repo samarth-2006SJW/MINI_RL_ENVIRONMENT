@@ -1,0 +1,31 @@
+{
+  "dimensions": [10, 10],
+  "charging_stations": [
+    [0, 0],
+    [0, 9],
+    [9, 0]
+  ],
+  "initial_robots": [
+    {
+      "id": "R1",
+      "location": [1, 1],
+      "status": "ACTIVE",
+      "battery_level": 100.0,
+      "assigned_task": null
+    },
+    {
+      "id": "R2",
+      "location": [5, 5],
+      "status": "ACTIVE",
+      "battery_level": 100.0,
+      "assigned_task": null
+    },
+    {
+      "id": "R3",
+      "location": [8, 8],
+      "status": "ACTIVE",
+      "battery_level": 100.0,
+      "assigned_task": null
+    }
+  ]
+}
