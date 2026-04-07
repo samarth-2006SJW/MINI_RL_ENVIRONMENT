@@ -47,3 +47,45 @@ You are the Autonomous Warehouse Controller. Your mission is to resolve logistic
 {{"command_type": "MOVE_ROBOT | REQUEST_RESTOCK | DISPATCH_MAINTENANCE | REROUTE_ORDER | ASSIGN_WORKER | WAIT", "target_id": "ID of robot or order", "parameters": {{}}}}
 
 Action:"""
+
+
+# ---------------------------------------------------------------------------
+# Visual Renderer
+# ---------------------------------------------------------------------------
+def render_warehouse_grid(env: WarehouseEnvironment):
+    """Converts the environment state into a visual Markdown grid."""
+    dims = env.map_config.get("dimensions", [10, 10])
+    width, height = dims[0], dims[1]
+    
+    # Initialize grid with empty floor
+    grid = [["⬜" for _ in range(width)] for _ in range(height)]
+    
+    # Add charging stations
+    for station in env.map_config.get("charging_stations", []):
+        grid[station[1]][station[0]] = "🔌"
+        
+    # Add blockages
+    for block in env.current_state.blocked_paths:
+        grid[block.location[1]][block.location[0]] = "🚧"
+        
+    # Add exceptions (Orders/Packages)
+    for ex in env.current_state.active_exceptions:
+        # If the exception is a shortage, we don't have a location, but if it's a breakdown, the robot is the location.
+        pass
+
+    # Add robots
+    for robot in env.current_state.robots:
+        if robot.location:
+            icon = "🤖"
+            if robot.status == "MAINTENANCE": icon = "🛠️"
+            elif robot.status == "SENSOR_FAILURE": icon = "❓"
+            grid[robot.location[1]][robot.location[0]] = icon
+
+    # Build Markdown table
+    header = "| " + " | ".join([str(i) for i in range(width)]) + " |"
+    divider = "| " + " | ".join(["---" for _ in range(width)]) + " |"
+    rows = []
+    for y in range(height):
+        rows.append(f"| " + " | ".join(grid[y]) + f" |")
+        
+    return f"### Warehouse Live View (10x10)\n\n" + "\n".join([header, divider] + rows)
