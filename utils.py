@@ -78,3 +78,41 @@ def find_shortest_path(
                 came_from[neighbor] = current
                 
     return None  # Unreachable
+
+def check_collision(
+    target_coordinate: Tuple[int, int], 
+    grid_size: Tuple[int, int], 
+    robots: List[Robot], 
+    blocked_paths: List[BlockedPath]
+) -> bool:
+    """
+    Checks if a target coordinate results in a collision.
+    
+    Args:
+        target_coordinate: Proposed (x, y) move.
+        grid_size: Total dimensions of the warehouse grid.
+        robots: List of current active robots.
+        blocked_paths: List of current known grid obstructions.
+        
+    Returns:
+        True if the move results in a collision, False otherwise.
+    """
+    x, y = target_coordinate
+    
+    # 1. Wall Checks
+    if not (0 <= x < grid_size[0] and 0 <= y < grid_size[1]):
+        return True
+        
+    # 2. Blocked Path Checks
+    for block in blocked_paths:
+        if block.location == target_coordinate:
+            return True
+            
+    # 3. Dynamic Robot Collisions
+    # Gracefully ignore robots experiencing SENSOR_FAILURE where location is None
+    for r in robots:
+        if r.location is not None and r.location == target_coordinate:
+            return True
+            
+    return False
+
