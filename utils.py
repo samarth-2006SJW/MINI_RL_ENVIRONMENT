@@ -160,3 +160,30 @@ def calculate_priority_score(exception_type: ExceptionType, severity: int) -> fl
     # Scale severity slightly exponentially to prioritize severities of 4/5 heavily
     return base_score + (severity ** 1.5) * 10.0
 
+def load_config(config_path: str) -> Dict:
+    """
+    Parses configuration grids from JSON or YAML files.
+    
+    Args:
+        config_path: Absolute or relative string path.
+        
+    Returns:
+        Parsed configuration dictionary.
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Configuration file {config_path} not found.")
+        
+    _, ext = os.path.splitext(config_path)
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        if ext.lower() in ['.yaml', '.yml']:
+            try:
+                import yaml
+                return yaml.safe_load(f)
+            except ImportError:
+                print("Warning: PyYAML not installed. Ensure standard installation.")
+                raise
+        elif ext.lower() == '.json':
+            return json.load(f)
+            
+    raise ValueError(f"Unsupported configuration file format: {ext}")
