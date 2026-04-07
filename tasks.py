@@ -22,3 +22,29 @@ def check_easy(state: WarehouseState) -> bool:
         return True
     except (TypeError, AttributeError):
         return False
+
+def check_medium(state: WarehouseState) -> bool:
+    """
+    Evaluates if the state meets the 'Medium' difficulty completion criteria.
+    Criteria: Easy criteria passed + No robots in SENSOR_FAILURE + inventory levels > configured threshold.
+    """
+    try:
+        # Explicit call to lower-tier check
+        if not check_easy(state):
+            return False
+            
+        # Check inventory > configured higher threshold for medium
+        min_inv_medium = state.config.get('min_inventory_medium', 50) if state.config else 50
+        for item, stock in state.inventory_status.items():
+            if stock <= min_inv_medium:
+                return False
+                
+        # Check robot statuses gracefully
+        if state.robots:
+            for robot in state.robots:
+                if robot.status == RobotStatus.SENSOR_FAILURE:
+                    return False
+                    
+        return True
+    except (TypeError, AttributeError):
+        return False        
