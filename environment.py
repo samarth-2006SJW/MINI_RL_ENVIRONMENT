@@ -42,3 +42,42 @@ class WarehouseEnvironment(BaseEnv):
         self.current_state: Optional[WarehouseState] = None
         self.total_reward = 0.0
         self._initialize_state()
+
+    def _initialize_state(self) -> None:
+        """
+        Creates the initial WarehouseState using the parsed map and scenario configurations.
+        """
+        # Parse initial robots setup (as a list in scenario config)
+        robots: List[Robot] = []
+        for r_data in self.scenario_config.get("robots", []):
+            robots.append(Robot(**r_data))
+        
+        # Parse blocked paths
+        blocked_paths: List[BlockedPath] = []
+        for path_data in self.scenario_config.get("blocked_paths", []):
+            blocked_paths.append(BlockedPath(**path_data))
+            
+        # Parse initial exceptions
+        active_exceptions: List[ExceptionIssue] = []
+        for issue_data in self.scenario_config.get("active_exceptions", []):
+            active_exceptions.append(ExceptionIssue(**issue_data))
+            
+        # Load inventory status from scenario configuration
+        inventory_status: Dict[str, int] = self.scenario_config.get("inventory_status", {})
+
+        # Load worker availability from scenario
+        worker_availability = self.scenario_config.get("worker_availability", 0)
+
+        # Load dynamic configurations
+        config_data = self.scenario_config.get("config", {})
+
+        # Populate state
+        self.current_state = WarehouseState(
+            time_step=0,
+            worker_availability=worker_availability,
+            inventory_status=inventory_status,
+            robots=robots,
+            blocked_paths=blocked_paths,
+            active_exceptions=active_exceptions,
+            config=config_data
+        )    
