@@ -133,3 +133,30 @@ def inventory_lookup( order_requirements: Dict[str, int], inventory_status: Dict
     return True
 
 
+def calculate_priority_score(exception_type: ExceptionType, severity: int) -> float:
+    """
+    Calculates a holistic priority score to aid agent exception resolution ordering.
+    
+    Weights logic:
+      - BREAKDOWN inherently halts systems (high baseline).
+      - MISROUTING/SHORTAGE stalls outputs (medium baseline).
+      - DELAY affects specific endpoints (lower baseline).
+      
+    Args:
+        exception_type: The ExceptionType enum.
+        severity: An integer severity 1-5.
+        
+    Returns:
+        A numeric score quantifying the priority.
+    """
+    type_weights = {
+        ExceptionType.BREAKDOWN: 100.0,
+        ExceptionType.MISROUTING: 75.0,
+        ExceptionType.SHORTAGE: 50.0,
+        ExceptionType.DELAY: 25.0
+    }
+    
+    base_score = type_weights.get(exception_type, 10.0)
+    # Scale severity slightly exponentially to prioritize severities of 4/5 heavily
+    return base_score + (severity ** 1.5) * 10.0
+
