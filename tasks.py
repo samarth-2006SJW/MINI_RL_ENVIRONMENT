@@ -72,3 +72,28 @@ def check_hard(state: WarehouseState) -> bool:
         return True
     except (TypeError, AttributeError):
         return False
+
+def check_completion(state: WarehouseState, difficulty: str = "easy") -> bool:
+    """
+    Acts as the single entry point for checking task completion.
+    
+    Args:
+        state (WarehouseState): The current environment state.
+        difficulty (str): The requested difficulty level ("easy", "medium", "hard").
+        
+    Returns:
+        bool: True if criteria for the specified difficulty is met, False otherwise.
+    """
+    try:
+        difficulty = difficulty.lower()
+        
+        if difficulty == "easy":
+            return check_easy(state)
+        elif difficulty == "medium":
+            return check_medium(state)
+        elif difficulty == "hard":
+            return check_hard(state)
+        else:
+            return check_easy(state)
+    except Exception:
+        return False        
