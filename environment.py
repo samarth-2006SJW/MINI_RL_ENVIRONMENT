@@ -81,3 +81,15 @@ class WarehouseEnvironment(BaseEnv):
             active_exceptions=active_exceptions,
             config=config_data
         )    
+
+    def reset(self) -> Dict:
+        """
+        Resets the environment to its initial configuration.
+        
+        Returns:
+            Dict: The initial observation of the environment state as a pure dictionary.
+        """
+        self._initialize_state()
+        self.total_reward = 0.0
+        print("[START] Mission: Warehouse Logistics initialized.")
+        return self.state()    
