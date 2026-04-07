@@ -116,3 +116,20 @@ def check_collision(
             
     return False
 
+def inventory_lookup( order_requirements: Dict[str, int], inventory_status: Dict[str, int]) -> bool:
+    """
+    Validates if current warehouse stock can fulfill a given order requirement.
+    
+    Args:
+        order_requirements: A dictionary of {item_id: quantity_needed}.
+        inventory_status: A dictionary of {item_id: quantity_in_stock}.
+        
+    Returns:
+        True if all required items have sufficient stock, False otherwise.
+    """
+    for item_id, required_qty in order_requirements.items():
+        if inventory_status.get(item_id, 0) < required_qty:
+            return False
+    return True
+
+
