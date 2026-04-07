@@ -5,6 +5,14 @@ import gradio as gr
 import openai
 from environment import WarehouseEnvironment
 from models import WarehouseState
+from fastapi import FastAPI
+import uvicorn
+
+app_api = FastAPI()
+
+@app_api.post("/reset")
+def reset_endpoint():
+    return {"status": "ok", "message": "Environment reset triggered."}
 
 # ---------------------------------------------------------------------------
 # LLM Configuration
@@ -21,7 +29,6 @@ def _get_llm_client():
     return openai.OpenAI(**client_kwargs)
 
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
-
 
 def _build_prompt(state_text: str, recent_history: str) -> str:
     return f"""
@@ -47,7 +54,6 @@ You are the Autonomous Warehouse Controller. Your mission is to resolve logistic
 {{"command_type": "MOVE_ROBOT | REQUEST_RESTOCK | DISPATCH_MAINTENANCE | REROUTE_ORDER | ASSIGN_WORKER | WAIT", "target_id": "ID of robot or order", "parameters": {{}}}}
 
 Action:"""
-
 
 # ---------------------------------------------------------------------------
 # Visual Renderer
@@ -90,7 +96,6 @@ def render_warehouse_grid(env: WarehouseEnvironment):
         
     return f"### Warehouse Live View (10x10)\n\n" + "\n".join([header, divider] + rows)
 
-
 # ---------------------------------------------------------------------------
 # Simulation Logic
 # ---------------------------------------------------------------------------
@@ -115,16 +120,15 @@ def run_simulation(scenario, max_steps):
         recent_history_str = "\n".join(action_history[-5:]) if action_history else "No history."
         
         # 1. Visualize Grid
-        grid_md = render_warehouse_grid(env)
+        # Initial status for thinking state
+        exceptions_before = len(env.current_state.active_exceptions)
+        status_md = f"**Step:** {step} | **Exceptions:** {exceptions_before} | **Total Reward:** {total_reward:.2f} | ⏳ *Generating Action...*"
         
-        # 2. Status Dashboard
-        exceptions = len(env.current_state.active_exceptions)
-        status_md = f"**Step:** {step} | **Exceptions:** {exceptions} | **Total Reward:** {total_reward:.2f}"
-        
-        yield grid_md, status_md, "Agent is thinking..."
+        yield render_warehouse_grid(env), status_md, "\n".join(action_history) if action_history else "System initialized. Agent is preparing..."
         
         # 3. Get LLM Action
         prompt = _build_prompt(state_text, recent_history_str)
+        error_logs = []
         try:
             response = client.chat.completions.create(
                 model=LLM_MODEL,
@@ -140,24 +144,38 @@ def run_simulation(scenario, max_steps):
                 llm_output = llm_output.split("```")[1].replace("json", "").strip()
             action = json.loads(llm_output)
         except Exception as e:
-            action = {"command_type": "WAIT", "target_id": None}
+            action = {"command_type": "ERROR", "target_id": None}
+            error_logs = [f"API/Parse Error: {str(e)}"]
             
         # 4. Step Environment
-        _, reward, terminated, info = env.step(action)
+        if action.get("command_type") == "ERROR":
+            reward = 0.0
+            terminated = False
+            info = {"event_log": error_logs}
+        else:
+            _, reward, terminated, info = env.step(action)
+            
         total_reward += reward
         
         # Log entry
-        logs = info.get("event_log", ["Agent waited."])
-        log_entry = f"Step {step}: {action['command_type']} -> {', '.join(logs)}"
+        logs = error_logs if error_logs else info.get("event_log", ["Agent waited."])
+        log_entry = f"Step {step}: {action.get('command_type')} -> {', '.join(logs)}"
         action_history.append(log_entry)
         
-        # Yield update
-        yield render_warehouse_grid(env), status_md, "\n".join(action_history)
+        # Update metrics AFTER the step
+        exceptions_after = len(env.current_state.active_exceptions)
+        final_status = f"**Step:** {step} | **Exceptions:** {exceptions_after} | **Total Reward:** {total_reward:.2f}"
         
-        if terminated or exceptions == 0:
-            yield render_warehouse_grid(env), status_md + " | **MISSION COMPLETE!**", "\n".join(action_history)
+        # Yield update
+        if terminated or exceptions_after == 0:
+            if total_reward > 0 and exceptions_after == 0:
+                final_status += " | 🏆 **MISSION COMPLETE!**"
+            else:
+                final_status += " | 🚨 **MISSION ENDED/FAILED**"
+            yield render_warehouse_grid(env), final_status, "\n".join(action_history)
             break
             
+        yield render_warehouse_grid(env), final_status, "\n".join(action_history)
         time.sleep(1) # Slow down for visualization
 
 # ---------------------------------------------------------------------------
@@ -183,4 +201,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) 
     start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs])
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    # Mount Gradio onto the FastAPI app
+    app = gr.mount_gradio_app(app_api, demo, path="/")
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
