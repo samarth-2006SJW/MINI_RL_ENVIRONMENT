@@ -1,0 +1,31 @@
+# ============================================================
+# Core API Server
+# FastAPI for REST endpoints + Uvicorn as the ASGI server
+# ============================================================
+fastapi>=0.100.0,<1.0.0
+uvicorn[standard]>=0.23.0,<1.0.0
+
+# ============================================================
+# LLM Framework
+# OpenAI SDK for LLM inference (compatible with NVIDIA NIM)
+# ============================================================
+openai>=1.10.0,<2.0.0
+
+# ============================================================
+# Configuration & Data Models
+# Pydantic v2 for strict schema validation; PyYAML for config
+# ============================================================
+pydantic>=2.0.0,<3.0.0
+pyyaml>=6.0,<7.0
+
+# ============================================================
+# RL Environment Framework
+# OpenEnv core runtime for warehouse environment orchestration
+# ============================================================
+openenv-core>=0.1.0
+
+# ============================================================
+# Visual Dashboard
+# Gradio for the interactive UI in Hugging Face Spaces
+# ============================================================
+gradio>=4.0.0
