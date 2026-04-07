@@ -89,3 +89,74 @@ def render_warehouse_grid(env: WarehouseEnvironment):
         rows.append(f"| " + " | ".join(grid[y]) + f" |")
         
     return f"### Warehouse Live View (10x10)\n\n" + "\n".join([header, divider] + rows)
+
+
+# ---------------------------------------------------------------------------
+# Simulation Logic
+# ---------------------------------------------------------------------------
+def run_simulation(scenario, max_steps):
+    client = _get_llm_client()
+    if not client:
+        yield "ERROR: OPENAI_API_KEY not found in Environment Variables.", "", ""
+        return
+
+    env = WarehouseEnvironment(
+        map_path="configs/warehouse_map.json",
+        scenario_path="configs/scenarios.yaml",
+        scenario_name=scenario
+    )
+    env.reset()
+    
+    action_history = []
+    total_reward = 0.0
+    
+    for step in range(1, max_steps + 1):
+        state_text = env._state_to_text()
+        recent_history_str = "\n".join(action_history[-5:]) if action_history else "No history."
+        
+        # 1. Visualize Grid
+        grid_md = render_warehouse_grid(env)
+        
+        # 2. Status Dashboard
+        exceptions = len(env.current_state.active_exceptions)
+        status_md = f"**Step:** {step} | **Exceptions:** {exceptions} | **Total Reward:** {total_reward:.2f}"
+        
+        yield grid_md, status_md, "Agent is thinking..."
+        
+        # 3. Get LLM Action
+        prompt = _build_prompt(state_text, recent_history_str)
+        try:
+            response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a warehouse routing expert. Output only valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.0
+            )
+            llm_output = response.choices[0].message.content.strip()
+            # Basic cleanup
+            if "```" in llm_output:
+                llm_output = llm_output.split("```")[1].replace("json", "").strip()
+            action = json.loads(llm_output)
+        except Exception as e:
+            action = {"command_type": "WAIT", "target_id": None}
+            
+        # 4. Step Environment
+        _, reward, terminated, info = env.step(action)
+        total_reward += reward
+        
+        # Log entry
+        logs = info.get("event_log", ["Agent waited."])
+        log_entry = f"Step {step}: {action['command_type']} -> {', '.join(logs)}"
+        action_history.append(log_entry)
+        
+        # Yield update
+        yield render_warehouse_grid(env), status_md, "\n".join(action_history)
+        
+        if terminated or exceptions == 0:
+            yield render_warehouse_grid(env), status_md + " | **MISSION COMPLETE!**", "\n".join(action_history)
+            break
+            
+        time.sleep(1) # Slow down for visualization
+
