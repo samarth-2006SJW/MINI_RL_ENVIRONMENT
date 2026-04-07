@@ -96,4 +96,31 @@ def check_completion(state: WarehouseState, difficulty: str = "easy") -> bool:
         else:
             return check_easy(state)
     except Exception:
-        return False        
+        return False   
+
+def get_task_progress(state: WarehouseState, total_starting_exceptions: int = 5) -> float:
+    """
+    Returns a percentage (0.0 to 1.0) of how close the agent is to finishing,
+    based on resolved exceptions vs. total starting exceptions.
+    
+    Args:
+        state (WarehouseState): The current state.
+        total_starting_exceptions (int): The baseline number of exceptions at start.
+                                          Defaults to 5 for general calculations.
+        
+    Returns:
+        float: Completion percentage from 0.0 to 1.0.
+    """
+    try:
+        current_exceptions = len(state.active_exceptions)
+        if total_starting_exceptions <= 0:
+            total_starting_exceptions = 1  # Avoid division by zero
+            
+        resolved = max(0, total_starting_exceptions - current_exceptions)
+        progress = float(resolved) / float(total_starting_exceptions)
+        
+        # Cap between 0.0 and 1.0
+        return max(0.0, min(1.0, progress))
+    except (TypeError, AttributeError):
+        # Graceful fallback if state is improperly structured
+        return 0.0             
