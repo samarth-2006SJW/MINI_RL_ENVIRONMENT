@@ -48,3 +48,27 @@ def check_medium(state: WarehouseState) -> bool:
         return True
     except (TypeError, AttributeError):
         return False        
+
+def check_hard(state: WarehouseState) -> bool:
+    """
+    Evaluates if the state meets the 'Hard' difficulty completion criteria.
+    Criteria: Medium criteria passed + time_step <= configured threshold + all robots battery_level > configured threshold.
+    """
+    try:
+        # Explicit call to lower-tier check
+        if not check_medium(state):
+            return False
+            
+        max_time = state.config.get('max_time_steps', 50) if state.config else 50
+        if state.time_step > max_time:
+            return False
+            
+        min_batt = state.config.get('min_battery', 20) if state.config else 20
+        if state.robots:
+            for robot in state.robots:
+                if robot.battery_level <= min_batt:
+                    return False
+                    
+        return True
+    except (TypeError, AttributeError):
+        return False
