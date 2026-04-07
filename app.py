@@ -160,3 +160,27 @@ def run_simulation(scenario, max_steps):
             
         time.sleep(1) # Slow down for visualization
 
+# ---------------------------------------------------------------------------
+# Gradio UI Shell
+# ---------------------------------------------------------------------------
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) as demo:
+    gr.Markdown("# 🤖 Autonomous Warehouse RL Controller")
+    gr.Markdown("Watch an LLM-based agent resolve warehouse logistics exceptions in real-time.")
+    
+    with gr.Row():
+        with gr.Column(scale=1):
+            scenario = gr.Dropdown(choices=["easy", "medium", "hard"], value="medium", label="Select Scenario")
+            steps = gr.Slider(minimum=5, maximum=50, value=20, step=1, label="Max Steps")
+            start_btn = gr.Button("🚀 Start Simulation", variant="primary")
+            
+        with gr.Column(scale=2):
+            status = gr.Markdown("### Status: Ready")
+            grid = gr.Markdown("### Grid will appear here...")
+            
+    with gr.Row():
+        logs = gr.Textbox(label="Agent Reasoning & Event Logs", lines=10, interactive=False)
+
+    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs])
+
+if __name__ == "__main__":
+    demo.launch(server_name="0.0.0.0", server_port=7860)
