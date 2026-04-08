@@ -6,13 +6,11 @@ from pathlib import Path
 import openai
 
 from environment import WarehouseEnvironment
-from models import RobotStatus
 
 # Mandatory Variables from Environment
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-USE_LLM = os.getenv("USE_LLM", "false").lower() == "true"
+API_KEY = os.environ["API_KEY"]
+API_BASE_URL = os.environ["API_BASE_URL"]
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
 
 TASKS = [
     ("easy", "easy"),
@@ -24,9 +22,7 @@ MIN_SCORE = 0.01
 MAX_SCORE = 0.99
 
 
-def _safe_action_from_model(client: openai.OpenAI | None, env: WarehouseEnvironment) -> dict:
-    if client is None:
-        return {"command_type": "WAIT", "target_id": None}
+def _safe_action_from_model(client: openai.OpenAI, env: WarehouseEnvironment) -> dict:
     prompt = (
         f"Current State: {env._state_to_text()}\n"
         "Output ONLY raw JSON dictionary for Warehouse Action."
@@ -48,55 +44,12 @@ def _safe_action_from_model(client: openai.OpenAI | None, env: WarehouseEnvironm
         return {"command_type": "WAIT", "target_id": None}
 
 
-def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
-    state = env.current_state
-    if state is None:
-        return {"command_type": "WAIT", "target_id": None}
-
-    if scenario == "easy":
-        if state.active_exceptions:
-            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
-        return {"command_type": "WAIT", "target_id": None}
-
-    if scenario == "medium":
-        for comp_name, qty in state.inventory_status.items():
-            if qty <= 50:
-                return {
-                    "command_type": "REQUEST_RESTOCK",
-                    "target_id": None,
-                    "parameters": {"component_name": comp_name},
-                }
-        if state.active_exceptions:
-            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
-        return {"command_type": "WAIT", "target_id": None}
-
-    if scenario == "hard":
-        for comp_name, qty in state.inventory_status.items():
-            if qty <= 50:
-                return {
-                    "command_type": "REQUEST_RESTOCK",
-                    "target_id": None,
-                    "parameters": {"component_name": comp_name},
-                }
-        for robot in state.robots:
-            if robot.status == RobotStatus.SENSOR_FAILURE:
-                return {"command_type": "RE_POLL_SENSOR", "target_id": robot.id}
-        for robot in state.robots:
-            if robot.status != RobotStatus.ACTIVE:
-                return {"command_type": "DISPATCH_MAINTENANCE", "target_id": robot.id}
-        if state.active_exceptions:
-            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
-        return {"command_type": "WAIT", "target_id": None}
-
-    return {"command_type": "WAIT", "target_id": None}
-
-
 def _bounded_score(rewards: list[float]) -> float:
     raw_score = sum(rewards) / 5.0 if rewards else 0.0
     return min(MAX_SCORE, max(MIN_SCORE, raw_score))
 
 
-def _run_task(client: openai.OpenAI | None, root: Path, task_name: str, scenario: str) -> None:
+def _run_task(client: openai.OpenAI, root: Path, task_name: str, scenario: str) -> None:
     env = WarehouseEnvironment(
         str(root / "configs" / "warehouse_map.json"),
         str(root / "configs" / "scenarios.yaml"),
@@ -115,10 +68,7 @@ def _run_task(client: openai.OpenAI | None, root: Path, task_name: str, scenario
         done = False
         for step in range(1, MAX_STEPS + 1):
             steps = step
-            if USE_LLM:
-                action = _safe_action_from_model(client, env)
-            else:
-                action = _heuristic_action(env, scenario)
+            action = _safe_action_from_model(client, env)
             _, reward, done, _ = env.step(action)
             rewards.append(float(reward))
             action_name = action.get("command_type", "WAIT")
@@ -145,7 +95,7 @@ def _run_task(client: openai.OpenAI | None, root: Path, task_name: str, scenario
 
 def main() -> None:
     root = Path(__file__).parent
-    client = openai.OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if (API_KEY and USE_LLM) else None
+    client = openai.OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     for task_name, scenario in TASKS:
         _run_task(client, root, task_name, scenario)
 
