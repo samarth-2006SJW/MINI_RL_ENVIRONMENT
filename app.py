@@ -194,6 +194,23 @@ def _kpi_markdown(
     )
 
 
+def _scenario_summary_markdown(env: WarehouseEnvironment, scenario: str, max_steps: int) -> str:
+    state = env.current_state
+    if state is None:
+        return "### Scenario Summary\n- Environment not initialized"
+    low_stock = [k for k, v in state.inventory_status.items() if v <= 50]
+    low_stock_txt = ", ".join(low_stock) if low_stock else "none"
+    return (
+        "### Scenario Summary\n"
+        f"- Scenario: **{scenario}**\n"
+        f"- Episode Cap (UI): **{max_steps}** steps\n"
+        f"- Initial Exceptions: **{len(state.active_exceptions)}**\n"
+        f"- Robots: **{len(state.robots)}**\n"
+        f"- Blocked Paths: **{len(state.blocked_paths)}**\n"
+        f"- Low-Stock Components (<=50): **{low_stock_txt}**"
+    )
+
+
 def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
     state = env.current_state
     if state is None:
@@ -290,6 +307,7 @@ def run_simulation(scenario, max_steps):
         scenario_name=scenario
     )
     env.reset()
+    scenario_summary = _scenario_summary_markdown(env, scenario, max_steps)
     
     action_history = []
     failed_action_memory = []
@@ -325,6 +343,7 @@ def run_simulation(scenario, max_steps):
             "\n".join(action_history) if action_history else "System initialized. Agent is preparing...",
             pre_kpi,
             "Preparing next action...",
+            scenario_summary,
         )
         
         # 3. Get LLM Action
@@ -381,10 +400,10 @@ def run_simulation(scenario, max_steps):
                 final_status += " | 🏆 **MISSION COMPLETE!**"
             else:
                 final_status += " | 🚨 **MISSION ENDED/FAILED**"
-            yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason
+            yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason, scenario_summary
             break
             
-        yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason
+        yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason, scenario_summary
         time.sleep(1) # Slow down for visualization
 
 # ---------------------------------------------------------------------------
@@ -404,13 +423,14 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) 
             status = gr.Markdown("### Status: Ready")
             grid = gr.Markdown("### Grid will appear here...")
             kpi = gr.Markdown("### Live KPIs\n- Waiting for simulation start")
+            summary = gr.Markdown("### Scenario Summary\n- Select a scenario and start simulation")
             
     with gr.Row():
         logs = gr.Textbox(label="Agent Reasoning & Event Logs", lines=10, interactive=False)
     with gr.Row():
         decision = gr.Textbox(label="Why This Action", lines=3, interactive=False)
 
-    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs, kpi, decision])
+    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs, kpi, decision, summary])
 
 if __name__ == "__main__":
     # Mount Gradio onto the FastAPI app

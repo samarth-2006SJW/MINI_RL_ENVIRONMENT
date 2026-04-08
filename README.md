@@ -507,3 +507,30 @@ Expected output ends with:
 
 This guard is intentionally narrower and faster than full end-to-end deployment checks.  
 Use it before commits, then run `validate-submission.sh` as the final gate.
+
+## 10. Judge-First UI Context (Section 5 - Scenario Summary Panel)
+
+To reduce reviewer friction, the Gradio app now includes a **Scenario Summary** panel that is visible throughout simulation.
+
+Implemented in:
+* [app.py](app.py)
+
+### What The Panel Shows
+
+1. Selected scenario (`easy`, `medium`, `hard`)
+2. UI episode cap (max steps selected in slider)
+3. Initial exception count
+4. Robot count
+5. Blocked path count
+6. Low-stock component list (`<= 50`)
+
+### Why This Improves Judge Experience
+
+1. Faster context loading:
+* Reviewers immediately see scenario pressure before first action.
+
+2. Better interpretability:
+* Action logs and KPI trends can be interpreted against known initial complexity.
+
+3. Stronger demo clarity:
+* The environment no longer relies on hidden assumptions at review time; operational constraints are visible in-panel.
