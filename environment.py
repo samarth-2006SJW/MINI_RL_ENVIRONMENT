@@ -201,6 +201,31 @@ class WarehouseEnvironment(BaseEnv):
             if target_robot and target_robot.status == RobotStatus.SENSOR_FAILURE:
                 target_robot.status = RobotStatus.ACTIVE
                 reward += 0.2
-                info["event_log"].append(f"Robot {target_robot.id} sensor restored.")  
+                info["event_log"].append(f"Robot {target_robot.id} sensor restored.") 
+
+        elif action_cmd.command_type == CommandType.REQUEST_RESTOCK:
+            params = action_cmd.parameters or {}
+            component_name = params.get("component_name")
+            
+            # Fallback if LLM forgets parameter: pick first item under 100
+            if not component_name and self.current_state.inventory_status:
+                for item, qty in self.current_state.inventory_status.items():
+                    if qty < 100:
+                        component_name = item
+                        break
+                if not component_name:
+                    component_name = list(self.current_state.inventory_status.keys())[0]
+                    
+            if component_name:
+                current_qty = self.current_state.inventory_status.get(component_name, 0)
+                if current_qty >= 100:
+                    reward -= 0.05
+                    info["event_log"].append(f"Restock failed: {component_name} already at max capacity.")
+                else:
+                    new_qty = min(100, current_qty + 20)
+                    self.current_state.inventory_status[component_name] = new_qty
+                    if new_qty > current_qty:
+                        reward += 0.5
+                    info["event_log"].append(f"Restocked {component_name}. New qty: {new_qty}.")         
                         
                            
