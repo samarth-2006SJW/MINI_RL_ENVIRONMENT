@@ -1,12 +1,4 @@
----
-title: Automated Logistics RL Environment
-emoji: 🤖
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_file: app.py
-pinned: false
----
+
 # Automated Warehouse Logistics Exception Handler 
 
 ## Introduction
