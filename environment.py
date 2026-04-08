@@ -92,4 +92,38 @@ class WarehouseEnvironment(BaseEnv):
         self._initialize_state()
         self.total_reward = 0.0
         print("[START] Mission: Warehouse Logistics initialized.")
-        return self.state()    
+        return self.state()  
+
+    def state(self) -> Dict:
+        """
+        Retrieves the current state of the warehouse environment.
+        Uses model_dump() for pure dictionary output to support FastAPI seamlessly.
+        Masks the location of robots experiencing SENSOR_FAILURE.
+        
+        Returns:
+            Dict: A pure dictionary representation of the current WarehouseState.
+        """
+        if self.current_state is None:
+            raise ValueError("Environment state is not initialized.")
+            
+        obs = self.current_state.model_dump()
+        
+        import enum
+        def _convert_enums(obj):
+            if isinstance(obj, dict):
+                return {k: _convert_enums(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_convert_enums(x) for x in obj]
+            elif isinstance(obj, enum.Enum):
+                return obj.value
+            return obj
+            
+        obs = _convert_enums(obs)
+        
+        # Observation Masking: Hide location if SENSOR_FAILURE
+        for robot in obs.get("robots", []):
+            status = robot.get("status")
+            if status == getattr(RobotStatus.SENSOR_FAILURE, 'value', 'SENSOR_FAILURE') or status == 'SENSOR_FAILURE':
+                robot["location"] = None
+                
+        return obs      
