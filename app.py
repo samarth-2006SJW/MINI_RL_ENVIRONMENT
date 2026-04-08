@@ -4,7 +4,7 @@ import time
 import gradio as gr
 import openai
 from environment import WarehouseEnvironment
-from models import WarehouseState
+from models import WarehouseState, RobotStatus
 from fastapi import FastAPI
 import uvicorn
 
@@ -55,6 +55,49 @@ You are the Autonomous Warehouse Controller. Your mission is to resolve logistic
 
 Action:"""
 
+
+def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
+    state = env.current_state
+    if state is None:
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "easy":
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "medium":
+        for comp_name, qty in state.inventory_status.items():
+            if qty <= 50:
+                return {
+                    "command_type": "REQUEST_RESTOCK",
+                    "target_id": None,
+                    "parameters": {"component_name": comp_name},
+                }
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "hard":
+        for comp_name, qty in state.inventory_status.items():
+            if qty <= 50:
+                return {
+                    "command_type": "REQUEST_RESTOCK",
+                    "target_id": None,
+                    "parameters": {"component_name": comp_name},
+                }
+        for robot in state.robots:
+            if robot.status == RobotStatus.SENSOR_FAILURE:
+                return {"command_type": "RE_POLL_SENSOR", "target_id": robot.id}
+        for robot in state.robots:
+            if robot.status != RobotStatus.ACTIVE:
+                return {"command_type": "DISPATCH_MAINTENANCE", "target_id": robot.id}
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    return {"command_type": "WAIT", "target_id": None}
+
 # ---------------------------------------------------------------------------
 # Visual Renderer
 # ---------------------------------------------------------------------------
@@ -101,9 +144,7 @@ def render_warehouse_grid(env: WarehouseEnvironment):
 # ---------------------------------------------------------------------------
 def run_simulation(scenario, max_steps):
     client = _get_llm_client()
-    if not client:
-        yield "ERROR: OPENAI_API_KEY not found in Environment Variables.", "", ""
-        return
+    use_heuristic = client is None
 
     env = WarehouseEnvironment(
         map_path="configs/warehouse_map.json",
@@ -122,30 +163,34 @@ def run_simulation(scenario, max_steps):
         # 1. Visualize Grid
         # Initial status for thinking state
         exceptions_before = len(env.current_state.active_exceptions)
-        status_md = f"**Step:** {step} | **Exceptions:** {exceptions_before} | **Total Reward:** {total_reward:.2f} | ⏳ *Generating Action...*"
+        mode_label = "Heuristic Fallback" if use_heuristic else "LLM"
+        status_md = f"**Step:** {step} | **Mode:** {mode_label} | **Exceptions:** {exceptions_before} | **Total Reward:** {total_reward:.2f} | ⏳ *Generating Action...*"
         
         yield render_warehouse_grid(env), status_md, "\n".join(action_history) if action_history else "System initialized. Agent is preparing..."
         
         # 3. Get LLM Action
-        prompt = _build_prompt(state_text, recent_history_str)
         error_logs = []
-        try:
-            response = client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a warehouse routing expert. Output only valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
-            )
-            llm_output = response.choices[0].message.content.strip()
-            # Basic cleanup
-            if "```" in llm_output:
-                llm_output = llm_output.split("```")[1].replace("json", "").strip()
-            action = json.loads(llm_output)
-        except Exception as e:
-            action = {"command_type": "ERROR", "target_id": None}
-            error_logs = [f"API/Parse Error: {str(e)}"]
+        if use_heuristic:
+            action = _heuristic_action(env, scenario)
+        else:
+            prompt = _build_prompt(state_text, recent_history_str)
+            try:
+                response = client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[
+                        {"role": "system", "content": "You are a warehouse routing expert. Output only valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0
+                )
+                llm_output = response.choices[0].message.content.strip()
+                # Basic cleanup
+                if "```" in llm_output:
+                    llm_output = llm_output.split("```")[1].replace("json", "").strip()
+                action = json.loads(llm_output)
+            except Exception as e:
+                action = {"command_type": "ERROR", "target_id": None}
+                error_logs = [f"API/Parse Error: {str(e)}"]
             
         # 4. Step Environment
         if action.get("command_type") == "ERROR":
