@@ -1,0 +1,15 @@
+scenario=medium
+initial_exceptions=1
+step=1 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'high_demand_item'}} reward=0.4900 exceptions=1->1 done=false
+events=Applied step penalty -0.01 | Restocked high_demand_item to 21
+step=2 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'high_demand_item'}} reward=0.4900 exceptions=1->1 done=false
+events=Applied step penalty -0.01 | Restocked high_demand_item to 41
+step=3 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'high_demand_item'}} reward=0.4900 exceptions=1->1 done=false
+events=Applied step penalty -0.01 | Restocked high_demand_item to 61
+step=4 action={'command_type': 'REROUTE_ORDER', 'target_id': 'EX_002'} reward=1.6740 exceptions=1->0 done=true
+events=Applied step penalty -0.01 | Resolved exception EX_002 | Task completed; completion bonus 1.00, early bonus 0.18
+final_steps=4
+final_reward=3.1440
+resolved=1
+remaining=0
+success=true

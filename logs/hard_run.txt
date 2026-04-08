@@ -1,0 +1,23 @@
+scenario=hard
+initial_exceptions=2
+step=1 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'tools'}} reward=0.4900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Restocked tools to 25
+step=2 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'tools'}} reward=0.4900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Restocked tools to 45
+step=3 action={'command_type': 'REQUEST_RESTOCK', 'target_id': None, 'parameters': {'component_name': 'tools'}} reward=0.4900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Restocked tools to 65
+step=4 action={'command_type': 'RE_POLL_SENSOR', 'target_id': 'R2'} reward=0.1900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Re-polled sensor and reactivated robot R2
+step=5 action={'command_type': 'DISPATCH_MAINTENANCE', 'target_id': 'R1'} reward=0.4900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Maintenance dispatched; robot R1 restored
+step=6 action={'command_type': 'DISPATCH_MAINTENANCE', 'target_id': 'R3'} reward=0.4900 exceptions=2->2 done=false
+events=Applied step penalty -0.01 | Maintenance dispatched; robot R3 restored
+step=7 action={'command_type': 'REROUTE_ORDER', 'target_id': 'EX_003'} reward=0.4900 exceptions=2->1 done=false
+events=Applied step penalty -0.01 | Resolved exception EX_003
+step=8 action={'command_type': 'REROUTE_ORDER', 'target_id': 'EX_004'} reward=1.6580 exceptions=1->0 done=true
+events=Applied step penalty -0.01 | Resolved exception EX_004 | Task completed; completion bonus 1.00, early bonus 0.17
+final_steps=8
+final_reward=4.7880
+resolved=2
+remaining=0
+success=true
