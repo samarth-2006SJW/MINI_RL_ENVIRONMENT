@@ -187,4 +187,20 @@ class WarehouseEnvironment(BaseEnv):
                     if location_list is not None and len(location_list) == 2:
                         target_location = (int(location_list[0]), int(location_list[1]))
                         grid_dims = self.map_config.get("dimensions", [10, 10])
-                        grid_size = (int(grid_dims[0]), int(grid_dims[1]))        
+                        grid_size = (int(grid_dims[0]), int(grid_dims[1]))   
+
+                         # Validate move with collision check
+                        if not check_collision(target_location, grid_size, self.current_state.robots, self.current_state.blocked_paths):
+                            target_robot.location = target_location
+                            info["event_log"].append(f"Robot {target_robot.id} moved to {target_location}.")
+                        else:
+                            reward -= 0.1
+                            info["event_log"].append(f"Collision detected for robot {target_robot.id}.")
+
+        elif action_cmd.command_type == CommandType.RE_POLL_SENSOR:
+            if target_robot and target_robot.status == RobotStatus.SENSOR_FAILURE:
+                target_robot.status = RobotStatus.ACTIVE
+                reward += 0.2
+                info["event_log"].append(f"Robot {target_robot.id} sensor restored.")  
+                        
+                           
