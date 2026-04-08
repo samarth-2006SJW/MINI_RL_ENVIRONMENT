@@ -152,6 +152,48 @@ def _call_llm_for_action(client: openai.OpenAI, prompt: str) -> tuple[dict, list
             return {"command_type": "WAIT", "target_id": None, "parameters": {}}, errors
 
 
+def _action_reasoning(action: dict, scenario: str, exceptions_before: int) -> str:
+    cmd = action.get("command_type", "WAIT")
+    target = action.get("target_id", None)
+    params = action.get("parameters", {}) or {}
+    if cmd == "REQUEST_RESTOCK":
+        comp = params.get("component_name", "unknown_component")
+        return f"Inventory-first policy ({scenario}): restock `{comp}` to reduce shortage pressure."
+    if cmd == "RE_POLL_SENSOR":
+        return f"Visibility recovery policy ({scenario}): re-poll robot `{target}` sensor before routing."
+    if cmd == "DISPATCH_MAINTENANCE":
+        return f"Stability policy ({scenario}): maintenance for robot `{target}` to restore ACTIVE fleet."
+    if cmd == "REROUTE_ORDER":
+        return f"Exception resolution policy ({scenario}): reroute target `{target}` while exceptions={exceptions_before}."
+    if cmd == "ASSIGN_WORKER":
+        return f"Congestion policy ({scenario}): assign worker to unblock `{target}`."
+    if cmd == "MOVE_ROBOT":
+        return f"Mobility policy ({scenario}): move robot `{target}` with collision-aware pathing."
+    return f"Conservative policy ({scenario}): WAIT selected due to low-confidence or completed state."
+
+
+def _kpi_markdown(
+    step: int,
+    mode_label: str,
+    total_reward: float,
+    exceptions_before: int,
+    exceptions_after: int,
+    resolved_count: int,
+    successful_actions: int,
+    total_actions: int,
+) -> str:
+    action_eff = (successful_actions / total_actions) if total_actions > 0 else 0.0
+    return (
+        "### Live KPIs\n"
+        f"- Mode: **{mode_label}**\n"
+        f"- Step: **{step}**\n"
+        f"- Total Reward: **{total_reward:.2f}**\n"
+        f"- Exceptions: **{exceptions_before} -> {exceptions_after}**\n"
+        f"- Resolved Exceptions: **{resolved_count}**\n"
+        f"- Action Efficiency: **{action_eff:.0%}**"
+    )
+
+
 def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
     state = env.current_state
     if state is None:
@@ -252,6 +294,9 @@ def run_simulation(scenario, max_steps):
     action_history = []
     failed_action_memory = []
     total_reward = 0.0
+    resolved_count = 0
+    successful_actions = 0
+    total_actions = 0
     
     for step in range(1, max_steps + 1):
         state_text = env._state_to_text()
@@ -264,7 +309,23 @@ def run_simulation(scenario, max_steps):
         mode_label = "Heuristic Fallback" if use_heuristic else "LLM"
         status_md = f"**Step:** {step} | **Mode:** {mode_label} | **Exceptions:** {exceptions_before} | **Total Reward:** {total_reward:.2f} | ⏳ *Generating Action...*"
         
-        yield render_warehouse_grid(env), status_md, "\n".join(action_history) if action_history else "System initialized. Agent is preparing..."
+        pre_kpi = _kpi_markdown(
+            step=step,
+            mode_label=mode_label,
+            total_reward=total_reward,
+            exceptions_before=exceptions_before,
+            exceptions_after=exceptions_before,
+            resolved_count=resolved_count,
+            successful_actions=successful_actions,
+            total_actions=total_actions,
+        )
+        yield (
+            render_warehouse_grid(env),
+            status_md,
+            "\n".join(action_history) if action_history else "System initialized. Agent is preparing...",
+            pre_kpi,
+            "Preparing next action...",
+        )
         
         # 3. Get LLM Action
         error_logs = []
@@ -278,25 +339,41 @@ def run_simulation(scenario, max_steps):
         _, reward, terminated, info = env.step(action)
             
         total_reward += reward
+        total_actions += 1
         action_key = f"{action.get('command_type')}:{action.get('target_id')}"
         if reward <= 0.0 and action.get("command_type") != "WAIT":
             failed_action_memory.append(action_key)
+        if reward > 0.0:
+            successful_actions += 1
         
         # Log entry
         logs = info.get("event_log", ["Agent waited."])
         if error_logs:
             logs = error_logs + logs
+        exceptions_after = len(env.current_state.active_exceptions)
+        if exceptions_after < exceptions_before:
+            resolved_count += (exceptions_before - exceptions_after)
+        action_reason = _action_reasoning(action, scenario, exceptions_before)
         log_entry = (
             f"Step {step}: mode={'heuristic' if use_heuristic else 'llm'} "
             f"action={json.dumps(action)} reward={reward:.2f} "
-            f"exceptions={len(env.current_state.active_exceptions)} "
+            f"exceptions={exceptions_after} "
             f"notes={'; '.join(logs)}"
         )
         action_history.append(log_entry)
         
         # Update metrics AFTER the step
-        exceptions_after = len(env.current_state.active_exceptions)
         final_status = f"**Step:** {step} | **Exceptions:** {exceptions_after} | **Total Reward:** {total_reward:.2f}"
+        kpi_md = _kpi_markdown(
+            step=step,
+            mode_label=mode_label,
+            total_reward=total_reward,
+            exceptions_before=exceptions_before,
+            exceptions_after=exceptions_after,
+            resolved_count=resolved_count,
+            successful_actions=successful_actions,
+            total_actions=total_actions,
+        )
         
         # Yield update
         if terminated or exceptions_after == 0:
@@ -304,10 +381,10 @@ def run_simulation(scenario, max_steps):
                 final_status += " | 🏆 **MISSION COMPLETE!**"
             else:
                 final_status += " | 🚨 **MISSION ENDED/FAILED**"
-            yield render_warehouse_grid(env), final_status, "\n".join(action_history)
+            yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason
             break
             
-        yield render_warehouse_grid(env), final_status, "\n".join(action_history)
+        yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason
         time.sleep(1) # Slow down for visualization
 
 # ---------------------------------------------------------------------------
@@ -326,11 +403,14 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) 
         with gr.Column(scale=2):
             status = gr.Markdown("### Status: Ready")
             grid = gr.Markdown("### Grid will appear here...")
+            kpi = gr.Markdown("### Live KPIs\n- Waiting for simulation start")
             
     with gr.Row():
         logs = gr.Textbox(label="Agent Reasoning & Event Logs", lines=10, interactive=False)
+    with gr.Row():
+        decision = gr.Textbox(label="Why This Action", lines=3, interactive=False)
 
-    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs])
+    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs, kpi, decision])
 
 if __name__ == "__main__":
     # Mount Gradio onto the FastAPI app
