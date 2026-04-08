@@ -208,3 +208,125 @@ D. Scenario Parameters (The "Chaos" Settings):-
 * Multi-Objective Optimization: Balancing speed of resolution against resource costs and operational penalties.
 
 By utilizing a modular architecture—separating "The Physics" (environment logic) from "The Judge" (grading logic)—this project provides a rigorous testing ground for LLM-based agents and traditional RL models to prove they can handle the chaotic edge cases of real-world logistics.
+
+## 3. Deep File-Wise Explanation (Latest Validation-Safe Changes)
+
+### A. `inference.py` (Validator-Critical Runtime)
+This file is the Phase-2 critical execution path used during deep validation.
+
+1. Why this file matters:
+* Validator parses `[START]`, `[STEP]`, `[END]` blocks from this runtime.
+* It expects at least 3 tasks with graders and valid bounded scores.
+* It also expects outbound LLM calls through injected proxy credentials.
+
+2. Current design guarantees:
+* Runs 3 tasks (`easy`, `medium`, `hard`) in one submission run.
+* Initializes OpenAI client strictly via:
+  * `base_url = os.environ["API_BASE_URL"]`
+  * `api_key = os.environ["API_KEY"]`
+* Uses model output parsing with safe JSON fallback to `WAIT` action.
+* Ensures each task emits:
+  * one `[START]`
+  * multiple `[STEP]`
+  * one `[END]` with `score=...`
+
+3. Scoring safety:
+* Score is clamped into strict open interval `(0, 1)` via `MIN_SCORE=0.01`, `MAX_SCORE=0.99`.
+* This prevents rejection due to exact `0.0` or `1.0`.
+
+4. Failure resilience:
+* Even malformed model output does not crash the run.
+* Invalid actions fallback safely, keeping log format intact.
+
+### B. `app.py` (Judge-Facing Demo Runtime)
+This file powers FastAPI + Gradio UX and interactive simulation.
+
+1. Runtime modes:
+* LLM mode: if `OPENAI_API_KEY` exists, simulation calls model.
+* Heuristic fallback mode: if key is absent, simulation still runs end-to-end.
+
+2. Why this matters for judging:
+* Judges can click "Start Simulation" without API setup friction.
+* Demo remains deterministic and functional in restricted environments.
+
+3. Key architecture:
+* `/reset` endpoint ensures health check compatibility.
+* `run_simulation()` streams stepwise state, action logs, reward progression.
+* Grid renderer provides human-readable warehouse evolution for each step.
+
+4. Safety behavior:
+* API/JSON parsing failures are trapped and converted to safe action flow.
+* Simulation does not terminate abruptly on transient model errors.
+
+### C. `models.py` (Schema Contract Layer)
+This file defines strict typed contracts for observation space and action space.
+
+1. Core role:
+* Maps OpenEnv schema contract to Pydantic models.
+* Prevents malformed state/action payloads from entering environment logic.
+
+2. Current stability improvements:
+* Duplicate `LogisticsCommand` definition was removed.
+* Single authoritative action schema now avoids ambiguity in serialization/validation.
+
+3. Practical impact:
+* Better schema determinism for validator and downstream tooling.
+* Cleaner maintenance path for future task/action extensions.
+
+### D. `configs/easy.yaml`, `configs/medium.yaml`, `configs/hard.yaml` (Task Manifests)
+These files are lightweight scenario descriptors aligned with `openenv.yaml` task references.
+
+1. Why added:
+* `openenv.yaml` references task config files per difficulty.
+* Missing files can break deep validation chain on task loading.
+
+2. Current structure:
+* `scenario_name` binds each file to matching scenario in `scenarios.yaml`.
+* `max_steps` defines safe default upper bound for task execution.
+
+3. Validator impact:
+* Removes path-resolution failures for task metadata.
+* Keeps task registry explicit and discoverable.
+
+### E. `.gitignore` (Submission Hygiene)
+This file prevents generated artifacts from polluting commits.
+
+1. Entries:
+* `__pycache__/`
+* `*.pyc`
+
+2. Why important:
+* Cleaner diffs and reproducible submissions.
+* Avoids accidental commit noise that can distract review/debug cycles.
+
+### F. `openenv.yaml` + `configs/scenarios.yaml` (Orchestration Layer Context)
+These were already central to your setup; latest changes are aligned to them.
+
+1. `openenv.yaml`:
+* Declares environment identity, schemas, specs, and task declarations.
+* Task keys (`easy`, `medium`, `hard`) are now consistently respected by runtime.
+
+2. `configs/scenarios.yaml`:
+* Contains concrete per-scenario initial conditions:
+  * robot states
+  * blocked paths
+  * active exceptions
+  * inventory conditions
+
+3. End-to-end effect:
+* Manifest, runtime, and validation outputs now point to same canonical task names.
+
+## 4. Summary of Submission Hardening
+
+1. Deep validation compatibility:
+* 3 graded tasks present.
+* Strict score bounds preserved.
+* Required proxy-based API usage enforced in `inference.py`.
+
+2. Judge usability:
+* Demo simulation remains operational even without manual key setup (`app.py` fallback mode).
+
+3. Repository reliability:
+* Task config references resolved.
+* Schema duplication removed.
+* Build/validate pipeline remains stable and predictable.
