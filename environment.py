@@ -127,3 +127,41 @@ class WarehouseEnvironment(BaseEnv):
                 robot["location"] = None
                 
         return obs      
+
+    def step(self, action: Union[Dict, LogisticsCommand]) -> Tuple[Dict, float, bool, Dict]:
+        """
+        Executes a step in the environment given an action.
+        Evaluates reward logic and checks for task completion.
+        
+        Args:
+            action (Union[Dict, LogisticsCommand]): Action mapping or command to execute.
+            
+        Returns:
+            Tuple[Dict, float, bool, Dict]: (observation, reward, terminated, info)
+        """
+        reward = 0.0
+        terminated = False
+        info = {"event_log": []}
+        
+        # Save exact action dict/LogisticsCommand for logging
+        action_repr = action.model_dump() if isinstance(action, LogisticsCommand) else action
+
+        try:
+            if isinstance(action, dict):
+                action_cmd = LogisticsCommand(**action)
+            elif isinstance(action, LogisticsCommand):
+                action_cmd = action
+            else:
+                raise ValueError("Action must be a LogisticsCommand or a dictionary.")
+        except Exception as e:
+            info["event_log"].append(f"Action validation failed: {str(e)}")
+            action_cmd = LogisticsCommand(command_type=CommandType.WAIT)
+            reward -= 0.1
+            
+        # Identify the target robot if there is one
+        target_robot = None
+        if action_cmd.target_id:
+            for r in self.current_state.robots:
+                if r.id == action_cmd.target_id:
+                    target_robot = r
+                    break    
