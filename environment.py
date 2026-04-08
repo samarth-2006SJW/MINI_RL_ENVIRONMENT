@@ -165,3 +165,26 @@ class WarehouseEnvironment(BaseEnv):
                 if r.id == action_cmd.target_id:
                     target_robot = r
                     break    
+
+        # Execute action based on type
+        if action_cmd.command_type == CommandType.MOVE_ROBOT:
+            if target_robot:
+                if target_robot.battery_level <= 0.0:
+                    reward -= 0.1
+                    info["event_log"].append("Movement failed: Battery depleted")
+                else:
+                    # Decrease battery by 0.5% for every MOVE_ROBOT attempt
+                    target_robot.battery_level = max(0.0, target_robot.battery_level - 0.5)
+                    
+                    if target_robot.battery_level == 0.0:
+                        reward -= 0.1
+                        info["event_log"].append(f"Robot {target_robot.id} battery is empty.")
+                    
+                    params = action_cmd.parameters or {}
+                    location_list = params.get("target_location")
+                    
+                    # Check target location is valid
+                    if location_list is not None and len(location_list) == 2:
+                        target_location = (int(location_list[0]), int(location_list[1]))
+                        grid_dims = self.map_config.get("dimensions", [10, 10])
+                        grid_size = (int(grid_dims[0]), int(grid_dims[1]))        
