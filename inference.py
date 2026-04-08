@@ -6,16 +6,18 @@ from pathlib import Path
 import openai
 
 from environment import WarehouseEnvironment
+from models import RobotStatus
 
 # Mandatory Variables from Environment
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+USE_LLM = os.getenv("USE_LLM", "false").lower() == "true"
 
 TASKS = [
-    ("warehouse-easy", "easy"),
-    ("warehouse-medium", "medium"),
-    ("warehouse-hard", "hard"),
+    ("easy", "easy"),
+    ("medium", "medium"),
+    ("hard", "hard"),
 ]
 MAX_STEPS = 15
 MIN_SCORE = 0.01
@@ -46,6 +48,49 @@ def _safe_action_from_model(client: openai.OpenAI | None, env: WarehouseEnvironm
         return {"command_type": "WAIT", "target_id": None}
 
 
+def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
+    state = env.current_state
+    if state is None:
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "easy":
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "medium":
+        for comp_name, qty in state.inventory_status.items():
+            if qty <= 50:
+                return {
+                    "command_type": "REQUEST_RESTOCK",
+                    "target_id": None,
+                    "parameters": {"component_name": comp_name},
+                }
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    if scenario == "hard":
+        for comp_name, qty in state.inventory_status.items():
+            if qty <= 50:
+                return {
+                    "command_type": "REQUEST_RESTOCK",
+                    "target_id": None,
+                    "parameters": {"component_name": comp_name},
+                }
+        for robot in state.robots:
+            if robot.status == RobotStatus.SENSOR_FAILURE:
+                return {"command_type": "RE_POLL_SENSOR", "target_id": robot.id}
+        for robot in state.robots:
+            if robot.status != RobotStatus.ACTIVE:
+                return {"command_type": "DISPATCH_MAINTENANCE", "target_id": robot.id}
+        if state.active_exceptions:
+            return {"command_type": "REROUTE_ORDER", "target_id": state.active_exceptions[0].id}
+        return {"command_type": "WAIT", "target_id": None}
+
+    return {"command_type": "WAIT", "target_id": None}
+
+
 def _bounded_score(rewards: list[float]) -> float:
     raw_score = sum(rewards) / 5.0 if rewards else 0.0
     return min(MAX_SCORE, max(MIN_SCORE, raw_score))
@@ -70,7 +115,10 @@ def _run_task(client: openai.OpenAI | None, root: Path, task_name: str, scenario
         done = False
         for step in range(1, MAX_STEPS + 1):
             steps = step
-            action = _safe_action_from_model(client, env)
+            if USE_LLM:
+                action = _safe_action_from_model(client, env)
+            else:
+                action = _heuristic_action(env, scenario)
             _, reward, done, _ = env.step(action)
             rewards.append(float(reward))
             action_name = action.get("command_type", "WAIT")
@@ -97,7 +145,7 @@ def _run_task(client: openai.OpenAI | None, root: Path, task_name: str, scenario
 
 def main() -> None:
     root = Path(__file__).parent
-    client = openai.OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if API_KEY else None
+    client = openai.OpenAI(base_url=API_BASE_URL, api_key=API_KEY) if (API_KEY and USE_LLM) else None
     for task_name, scenario in TASKS:
         _run_task(client, root, task_name, scenario)
 
