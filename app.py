@@ -1,6 +1,7 @@
 import os
 import json
 import time
+from typing import Optional
 import gradio as gr
 import openai
 from environment import WarehouseEnvironment
@@ -29,8 +30,17 @@ def _get_llm_client():
     return openai.OpenAI(**client_kwargs)
 
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
+VALID_COMMANDS = {
+    "MOVE_ROBOT",
+    "REQUEST_RESTOCK",
+    "DISPATCH_MAINTENANCE",
+    "REROUTE_ORDER",
+    "ASSIGN_WORKER",
+    "RE_POLL_SENSOR",
+    "WAIT",
+}
 
-def _build_prompt(state_text: str, recent_history: str) -> str:
+def _build_prompt(state_text: str, recent_history: str, failed_actions: str) -> str:
     return f"""
 ### ROLE
 You are the Autonomous Warehouse Controller. Your mission is to resolve logistics exceptions with ZERO wasted moves.
@@ -40,6 +50,9 @@ You are the Autonomous Warehouse Controller. Your mission is to resolve logistic
 
 ### RECENT ACTION HISTORY
 {recent_history}
+
+### AVOID THESE FAILED ACTIONS
+{failed_actions}
 
 ### OPERATIONAL HIERARCHY (Strictly Follow)
 1. CRITICAL: If 'Exception Count' > 0, identify the specific ID and issue the resolution command (REROUTE_ORDER, REQUEST_RESTOCK, or DISPATCH_MAINTENANCE).
@@ -54,6 +67,89 @@ You are the Autonomous Warehouse Controller. Your mission is to resolve logistic
 {{"command_type": "MOVE_ROBOT | REQUEST_RESTOCK | DISPATCH_MAINTENANCE | REROUTE_ORDER | ASSIGN_WORKER | WAIT", "target_id": "ID of robot or order", "parameters": {{}}}}
 
 Action:"""
+
+
+def _extract_json_object(raw_text: str) -> Optional[str]:
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+    if "```" in text:
+        parts = text.split("```")
+        for part in parts:
+            candidate = part.replace("json", "").strip()
+            if candidate.startswith("{") and candidate.endswith("}"):
+                return candidate
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    return None
+
+
+def _normalize_action(action: dict) -> dict:
+    if not isinstance(action, dict):
+        return {"command_type": "WAIT", "target_id": None, "parameters": {}}
+    cmd = str(action.get("command_type", "WAIT")).upper().strip()
+    if cmd not in VALID_COMMANDS:
+        cmd = "WAIT"
+    target_id = action.get("target_id", None)
+    parameters = action.get("parameters", {})
+    if not isinstance(parameters, dict):
+        parameters = {}
+    return {"command_type": cmd, "target_id": target_id, "parameters": parameters}
+
+
+def _call_llm_for_action(client: openai.OpenAI, prompt: str) -> tuple[dict, list[str]]:
+    errors: list[str] = []
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a warehouse routing expert. Output only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+        )
+        raw_output = (response.choices[0].message.content or "").strip()
+        json_blob = _extract_json_object(raw_output)
+        if json_blob is None:
+            raise ValueError("No JSON object found in model response.")
+        parsed = json.loads(json_blob)
+        return _normalize_action(parsed), errors
+    except Exception as first_error:
+        errors.append(f"Primary parse failed: {first_error}")
+        # One controlled retry with strict repair instruction
+        try:
+            repair_prompt = (
+                "Return ONLY valid JSON action object with keys command_type,target_id,parameters. "
+                "No markdown, no explanation."
+            )
+            retry_response = client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": "Output only valid JSON."},
+                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": repair_prompt},
+                ],
+                temperature=0.0,
+            )
+            retry_text = (retry_response.choices[0].message.content or "").strip()
+            retry_blob = _extract_json_object(retry_text)
+            if retry_blob is None:
+                raise ValueError("Retry returned no JSON object.")
+            retry_parsed = json.loads(retry_blob)
+            return _normalize_action(retry_parsed), errors
+        except Exception as retry_error:
+            errors.append(f"Retry parse failed: {retry_error}")
+            return {"command_type": "WAIT", "target_id": None, "parameters": {}}, errors
 
 
 def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
@@ -154,11 +250,13 @@ def run_simulation(scenario, max_steps):
     env.reset()
     
     action_history = []
+    failed_action_memory = []
     total_reward = 0.0
     
     for step in range(1, max_steps + 1):
         state_text = env._state_to_text()
         recent_history_str = "\n".join(action_history[-5:]) if action_history else "No history."
+        failed_actions_str = ", ".join(failed_action_memory[-5:]) if failed_action_memory else "None"
         
         # 1. Visualize Grid
         # Initial status for thinking state
@@ -173,38 +271,27 @@ def run_simulation(scenario, max_steps):
         if use_heuristic:
             action = _heuristic_action(env, scenario)
         else:
-            prompt = _build_prompt(state_text, recent_history_str)
-            try:
-                response = client.chat.completions.create(
-                    model=LLM_MODEL,
-                    messages=[
-                        {"role": "system", "content": "You are a warehouse routing expert. Output only valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0
-                )
-                llm_output = response.choices[0].message.content.strip()
-                # Basic cleanup
-                if "```" in llm_output:
-                    llm_output = llm_output.split("```")[1].replace("json", "").strip()
-                action = json.loads(llm_output)
-            except Exception as e:
-                action = {"command_type": "ERROR", "target_id": None}
-                error_logs = [f"API/Parse Error: {str(e)}"]
+            prompt = _build_prompt(state_text, recent_history_str, failed_actions_str)
+            action, error_logs = _call_llm_for_action(client, prompt)
             
         # 4. Step Environment
-        if action.get("command_type") == "ERROR":
-            reward = 0.0
-            terminated = False
-            info = {"event_log": error_logs}
-        else:
-            _, reward, terminated, info = env.step(action)
+        _, reward, terminated, info = env.step(action)
             
         total_reward += reward
+        action_key = f"{action.get('command_type')}:{action.get('target_id')}"
+        if reward <= 0.0 and action.get("command_type") != "WAIT":
+            failed_action_memory.append(action_key)
         
         # Log entry
-        logs = error_logs if error_logs else info.get("event_log", ["Agent waited."])
-        log_entry = f"Step {step}: {action.get('command_type')} -> {', '.join(logs)}"
+        logs = info.get("event_log", ["Agent waited."])
+        if error_logs:
+            logs = error_logs + logs
+        log_entry = (
+            f"Step {step}: mode={'heuristic' if use_heuristic else 'llm'} "
+            f"action={json.dumps(action)} reward={reward:.2f} "
+            f"exceptions={len(env.current_state.active_exceptions)} "
+            f"notes={'; '.join(logs)}"
+        )
         action_history.append(log_entry)
         
         # Update metrics AFTER the step
