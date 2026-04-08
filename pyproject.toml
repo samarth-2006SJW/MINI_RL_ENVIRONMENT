@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "warehouse-logistics-v1"
+version = "0.1.0"
+description = "Warehouse Logistics Exception Handler RL environment built for OpenEnv"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0,<1.0.0",
+    "uvicorn[standard]>=0.23.0,<1.0.0",
+    "openai>=1.10.0,<2.0.0",
+    "pydantic>=2.0.0,<3.0.0",
+    "pyyaml>=6.0,<7.0",
+    "openenv-core>=0.1.0",
+    "gradio>=4.0.0",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
