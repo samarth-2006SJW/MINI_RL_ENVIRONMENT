@@ -88,50 +88,50 @@ Firstly you'll need your own API keys,LLM models and their Base URL's.
 
 ## System Architecture & Logical Flow 
 ```mermaid
- flowchart LR
+graph LR
     %% Custom UI Colors
+    classDef serverNode fill:#6c5ce7,stroke:#a29bfe,stroke-width:2px,color:#ffffff,rx:8px,ry:8px;
     classDef blockNode fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#dfe6e9,rx:8px,ry:8px;
     classDef dataNode fill:#2d3436,stroke:#55efc4,stroke-width:2px,color:#dfe6e9;
-    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff,shape:circle;
+    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff;
 
-    %% 1. Force Agent as the absolute FIRST component on the Left
-    subgraph Trigger [User Space]
-        Agent((User / Agent)):::actorNode
+    subgraph Trigger ["Trigger"]
+        Agent(("User / RL Agent")):::actorNode
     end
 
-    %% 2. Presentation Layer cleanly side-by-side
-    subgraph Presentation [API & UI Layer]
-        App["app.py"]:::blockNode
+    subgraph Deployment ["Deployment"]
+        Srv["Srv"]:::serverNode
+        Config_Build["Config_Build"]:::dataNode
     end
 
-    %% 3. Core system side-by-side
-    subgraph Core [Core Physics & Logic]
-        Env["environment.py"]:::blockNode
-        Models["models.py"]:::blockNode
-        Utils["utils.py"]:::blockNode
-        Config[("openenv.yaml")]:::dataNode
+    subgraph Presentation ["Presentation"]
+        App["App"]:::blockNode
     end
 
-    %% 4. Task Check side-by-side
-    subgraph Eval [Task Validation]
-        Tasks["tasks.py"]:::blockNode
+    subgraph Core ["Core"]
+        Env["Env"]:::blockNode
+        Models["Models"]:::blockNode
+        Utils["Utils"]:::blockNode
+        Yaml["Yaml"]:::dataNode
     end
 
-    %% Forward Flow (Engine routes automatically left to right)
-    Agent -->|1. Takes Action| App
-    App -->|2. Step / Reset| Env
+    subgraph Eval ["Eval"]
+        Tasks["Tasks"]:::blockNode
+    end
+
+    %% Flow
+    Agent -->|"Trigger"| Srv
+    Srv -->|"Process"| App
+    App -->|"Transform"| Env
     
-    Env -.->|3. Data Schemas| Models
-    Env -.->|4. Helpers Script| Utils
-    Env -->|5. Load Params| Config
+    Env -.->|"Defines"| Models
+    Env -.->|"Defines"| Utils
+    Env -->|"Converts"| Yaml
+    Env -->|"Contains"| Tasks
     
-    Env -->|6. Check Status| Tasks
-    
-    %% Return Feedback Flow (Engine wraps arrows around boxes neatly)
-    Tasks -->|7. Evaluated Reward| Env
-    Env -->|8. Observation Array| App
-    App -->|9. Update UI & JSON| Agent
-
+    Tasks -->|"Evaluates"| Env
+    Env -->|"Returns"| App
+    App -->|"Queries"| Agent
 
 ```    
 ## Core Mission
