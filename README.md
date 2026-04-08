@@ -380,3 +380,90 @@ python scripts/generate_replay_logs.py
 ```
 
 This command regenerates all three logs in `logs/` using deterministic heuristic policy rules.
+
+## 7. Config Knobs (Section 3 - Explicitly Implemented)
+
+Tunable runtime knobs are now explicitly declared inside each scenario block in [scenarios.yaml](configs/scenarios.yaml) under `config:`.
+
+### Completion/Constraint Knobs (`tasks.py`)
+
+1. `min_inventory`
+2. `min_inventory_medium`
+3. `min_battery`
+4. `max_time_steps`
+
+### Reward Shaping Knobs (`environment.py`)
+
+1. `step_penalty`
+2. `resolution_reward`
+3. `completion_reward`
+4. `timeout_penalty`
+
+### Dynamic Difficulty Knobs (`environment.py`)
+
+1. `new_exception_chance`
+2. `max_active_exceptions`
+
+Default values are set to preserve current stable behavior, with dynamic exception injection disabled by default (`new_exception_chance: 0.0`).
+
+## 8. How To Run (Local vs Docker vs Hugging Face)
+
+This project supports three execution paths. Use the one that matches your setup.
+
+### A. Local Python Run (Fastest for development)
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
+
+Notes:
+1. UI starts on `http://localhost:7860`.
+2. If `OPENAI_API_KEY` is not set, app still runs in heuristic fallback mode.
+3. Optional LLM env vars for UI mode:
+  `OPENAI_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`.
+
+### B. Docker Run (Reproducible containerized run)
+
+```powershell
+docker build -t warehouse-rl .
+docker run --rm -p 7860:7860 ^
+  -e OPENAI_API_KEY=your_key ^
+  -e LLM_BASE_URL=https://api.openai.com/v1 ^
+  -e LLM_MODEL=gpt-4o ^
+  warehouse-rl
+```
+
+Notes:
+1. Dockerfile already exposes port `7860`.
+2. Container starts with `python app.py`.
+3. You can omit API key to test fallback behavior.
+
+### C. Hugging Face Space Run (Hosted deployment)
+
+Repository is deployed as a Docker Space:
+* Space URL: `https://huggingface.co/spaces/samarth2006SJW/Automated_Logistics_Exception_Handler`
+
+To push updates:
+
+```powershell
+git push origin main
+$env:HF_TOKEN=\"<your_hf_token>\"
+git push \"https://samarth2006SJW:$env:HF_TOKEN@huggingface.co/spaces/samarth2006SJW/Automated_Logistics_Exception_Handler\" main:main
+```
+
+Recommended Space secrets for LLM mode:
+1. `OPENAI_API_KEY`
+2. `LLM_BASE_URL`
+3. `LLM_MODEL`
+
+### D. Hackathon Validator Runtime Clarification
+
+For Phase-2 deep validation, `inference.py` uses the injected variables:
+1. `API_BASE_URL`
+2. `API_KEY`
+3. optional `MODEL_NAME`
+
+This is separate from UI variables (`OPENAI_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`).
