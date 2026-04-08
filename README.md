@@ -1,4 +1,17 @@
+---
+title: Automated Warehouse Logistics Exception Handler
+emoji: 📦
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+sdk_version: "20.24.1"
+app_file: inference.py
+pinned: false
+---
 
+
+# Automated Warehouse Logistics RL
+This space hosts the inference script for the Meta x SST Hackathon.
 # Automated Warehouse Logistics Exception Handler 
 
 ## Introduction
