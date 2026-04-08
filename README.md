@@ -467,3 +467,43 @@ For Phase-2 deep validation, `inference.py` uses the injected variables:
 3. optional `MODEL_NAME`
 
 This is separate from UI variables (`OPENAI_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`).
+
+## 9. Pre-Submission Guard (Section 4 - Regression Safety)
+
+To reduce last-minute submission regressions, use the automated guard script before every final push.
+
+Guard script:
+* [pre_submission_guard.py](scripts/pre_submission_guard.py)
+
+### What It Verifies
+
+1. Inference proxy contract (`inference.py`):
+* `API_KEY` is read from `os.environ["API_KEY"]`
+* `API_BASE_URL` is read from `os.environ["API_BASE_URL"]`
+* OpenAI client is initialized with `base_url=API_BASE_URL` and `api_key=API_KEY`
+
+2. Task/score safety:
+* At least 3 tasks are declared in `TASKS`
+* Score clamps satisfy strict bound rule: `0 < MIN_SCORE < MAX_SCORE < 1`
+
+3. Manifest consistency:
+* `openenv.yaml` has at least 3 task entries
+* Every task key exists in `configs/scenarios.yaml`
+* Every `config_path` referenced in `openenv.yaml` exists on disk
+
+4. OpenEnv readiness:
+* Executes `openenv validate` and fails fast if contract/build checks break
+
+### How To Run
+
+```powershell
+python scripts/pre_submission_guard.py
+```
+
+Expected output ends with:
+* `[OK] All guard checks passed. Repository is submission-safe.`
+
+### Why This Helps
+
+This guard is intentionally narrower and faster than full end-to-end deployment checks.  
+Use it before commits, then run `validate-submission.sh` as the final gate.
