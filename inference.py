@@ -7,25 +7,33 @@ import openai
 
 from environment import WarehouseEnvironment
 
-# Mandatory Variables from Environment
-API_KEY = os.environ["API_KEY"]
+# ── Mandatory OpenEnv Hackathon Variables ────────────────────────────────────
+# These are injected by the Meta evaluation backend.
+# HF_TOKEN  → your Hugging Face / provider API key
+# API_BASE_URL → LLM endpoint (e.g. https://api.openai.com/v1)
+# MODEL_NAME   → model identifier (e.g. gpt-4o-mini)
+API_KEY      = os.environ["HF_TOKEN"]
 API_BASE_URL = os.environ["API_BASE_URL"]
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o-mini")
+MODEL_NAME   = os.getenv("MODEL_NAME", "gpt-4o-mini")
 
+# ── Tasks: (task_name, scenario_name) ────────────────────────────────────────
+# Exactly 3 tasks are required by the hackathon validator.
 TASKS = [
-    ("easy", "easy"),
+    ("easy",   "easy"),
     ("medium", "medium"),
-    ("hard", "hard"),
+    ("hard",   "hard"),
 ]
-MAX_STEPS = 15
-MIN_SCORE = 0.01
-MAX_SCORE = 0.99
+
+MAX_STEPS = 15   # Well within the 20-min runtime limit on 2vCPU/8GB
 
 
 def _safe_action_from_model(client: openai.OpenAI, env: WarehouseEnvironment) -> dict:
+    """Call the LLM and parse a valid action JSON dict. Falls back to WAIT on any error."""
     prompt = (
-        f"Current State: {env._state_to_text()}\n"
-        "Output ONLY raw JSON dictionary for Warehouse Action."
+        f"Current Warehouse State: {env._state_to_text()}\n"
+        "Output ONLY a raw JSON dictionary with keys: command_type, target_id, parameters.\n"
+        "Valid command_type values: MOVE_ROBOT, REROUTE_ORDER, DISPATCH_MAINTENANCE, "
+        "REQUEST_RESTOCK, ASSIGN_WORKER, RE_POLL_SENSOR, WAIT"
     )
     try:
         response = client.chat.completions.create(
@@ -33,35 +41,32 @@ def _safe_action_from_model(client: openai.OpenAI, env: WarehouseEnvironment) ->
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
         )
-        raw_out = (response.choices[0].message.content or "").strip()
-        if "```" in raw_out:
-            raw_out = raw_out.split("```")[1].replace("json", "").strip()
-        action = json.loads(raw_out)
-        if not isinstance(action, dict):
-            return {"command_type": "WAIT", "target_id": None}
-        return action
+        raw = (response.choices[0].message.content or "").strip()
+        # Strip markdown code fences if present
+        if "```" in raw:
+            raw = raw.split("```")[1].replace("json", "").strip()
+        action = json.loads(raw)
+        if isinstance(action, dict):
+            return action
     except Exception:
-        return {"command_type": "WAIT", "target_id": None}
-
-
-def _bounded_score(rewards: list[float]) -> float:
-    raw_score = sum(rewards) / 5.0 if rewards else 0.0
-    return min(MAX_SCORE, max(MIN_SCORE, raw_score))
+        pass
+    return {"command_type": "WAIT", "target_id": None}
 
 
 def _run_task(client: openai.OpenAI, root: Path, task_name: str, scenario: str) -> None:
+    """Run a single task episode and emit [START] / [STEP] / [END] structured logs."""
     env = WarehouseEnvironment(
         str(root / "configs" / "warehouse_map.json"),
         str(root / "configs" / "scenarios.yaml"),
         scenario,
     )
 
-    print(f"[START] task={task_name} env=openenv-v1 model={MODEL_NAME}", flush=True)
+    # ── [START] line ─────────────────────────────────────────────────────────
+    print(f"[START] task={task_name} env=warehouse-logistics-v1 model={MODEL_NAME}", flush=True)
 
-    rewards: list[float] = []
+    cumulative_reward = 0.0
     steps = 0
     success = "false"
-    score = MIN_SCORE
 
     try:
         env.reset()
@@ -70,31 +75,38 @@ def _run_task(client: openai.OpenAI, root: Path, task_name: str, scenario: str) 
             steps = step
             action = _safe_action_from_model(client, env)
             _, reward, done, _ = env.step(action)
-            rewards.append(float(reward))
+            cumulative_reward += float(reward)
             action_name = action.get("command_type", "WAIT")
+
+            # ── [STEP] line ───────────────────────────────────────────────────
             print(
-                f"[STEP] step={step} action={action_name} reward={reward:.2f} "
+                f"[STEP] step={step} action={action_name} reward={reward:.4f} "
                 f"done={str(done).lower()} error=null",
                 flush=True,
             )
             if done:
                 break
             time.sleep(0.05)
-        score = _bounded_score(rewards)
-        success = "true" if score >= 0.1 else "false"
-    except Exception:
-        score = MIN_SCORE
-        success = "false"
 
-    rewards_str = ",".join(f"{r:.2f}" for r in rewards) if rewards else "0.00"
+        # Final score is the cumulative reward, already bounded to (0.0, 1.0)
+        # by environment.py's progress-delta reward scheme.
+        score = round(max(0.01, min(0.99, cumulative_reward)), 4)
+        success = "true" if score >= 0.1 else "false"
+
+    except Exception as exc:
+        score = 0.01
+        success = "false"
+        print(f"[STEP] step={steps} action=WAIT reward=0.0000 done=true error={exc!r}", flush=True)
+
+    # ── [END] line ────────────────────────────────────────────────────────────
     print(
-        f"[END] success={success} steps={steps} score={score:.2f} rewards={rewards_str}",
+        f"[END] success={success} steps={steps} score={score:.4f}",
         flush=True,
     )
 
 
 def main() -> None:
-    root = Path(__file__).parent
+    root   = Path(__file__).parent
     client = openai.OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
     for task_name, scenario in TASKS:
         _run_task(client, root, task_name, scenario)

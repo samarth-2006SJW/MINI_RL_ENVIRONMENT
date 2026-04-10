@@ -1,9 +1,0 @@
-scenario=easy
-initial_exceptions=1
-step=1 action={'command_type': 'REROUTE_ORDER', 'target_id': 'EX_001'} reward=1.6860 exceptions=1->0 done=true
-events=Applied step penalty -0.01 | Resolved exception EX_001 | Task completed; completion bonus 1.00, early bonus 0.20
-final_steps=1
-final_reward=1.6860
-resolved=1
-remaining=0
-success=true

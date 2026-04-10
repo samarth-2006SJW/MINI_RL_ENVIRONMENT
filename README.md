@@ -1,549 +1,159 @@
 ---
-title: Automated Warehouse Logistics Exception Handler
-emoji: 📦
+title: Warehouse Logistics RL Environment
+emoji: 🏭
 colorFrom: blue
 colorTo: indigo
 sdk: docker
-sdk_version: "20.24.1"
-app_file: inference.py
+app_file: app.py
 pinned: false
+tags:
+  - openenv
+  - reinforcement-learning
+  - logistics
 ---
 
+# Warehouse Logistics Exception Handler
 
-# Automated Warehouse Logistics RL
-This space hosts the inference script for the Meta x SST Hackathon.
-# Automated Warehouse Logistics Exception Handler 
+An [OpenEnv](https://github.com/meta-pytorch/OpenEnv) environment that simulates a dynamic warehouse control system. An AI agent acts as the **Central Dispatcher**, resolving cascading logistics failures — robot breakdowns, inventory shortages, and shipment delays — across three escalating difficulty levels.
 
-## Introduction
-In modern automated fulfillment centers, efficiency isn't just about how fast robots move—it’s about how quickly the system recovers when things go wrong. Most automated systems fail when faced with "exceptions": a robot breaking down in a narrow aisle, a sensor reporting "ghost" inventory, or a sudden shipment delay that cascades into a logistical nightmare.
+## Quick Start
 
-The Automated Warehouse Logistics Exception Handler is a high-fidelity Mini Reinforcement Learning (RL) environment built on the OpenEnv framework. It simulates a dynamic warehouse control system where an AI agent acts as the "Central Dispatcher.It provides a lightweight yet mathematically rigorous sandbox for agents to resolve cascading logistical failures.
-
-## Project Overview
-
-* 🦾 Focused High-Fidelity Simulation — A lightweight yet detailed environment that simulates specific warehouse exceptions like robot blockages, damaged goods, and shipment delays.
-
-* 📡 Stochasticity & Noise — Features a "Noisy Observation" toggle that obscures robot locations and data, forcing agents to handle partial observability through active polling actions.
-
-* 📊 Multi-Tiered Grading — Moves beyond simple binary success/failure rewards by implementing a continuous progress-based scoring system (0.0 to 1.0).
-
-*  🤖 Agent Agnostic Design — Fully compatible with the OpenEnv specification, making it a plug-and-play sandbox for testing both LLM-based agents and traditional Reinforcement Learning models.
-
-* 🏗️ Modular Architecture — Strictly separates environment "physics" from the "grading logic," ensuring high performance and easy extensibility for new warehouse tasks.
- 
-## Getting Started
-
-### Local Installation(Setup)
- ####  Prequisites
-  Before you begin ensure you have the following installed and verified 
-
- * Python(3.10+):The core runtime for the environment.
- * Git: To clone the repository.
- * pip:Python's package installer
-
-#### Step 1: Clone the Repository
- Open your terminal or powershell and run:
-
-    git remote add origin "https://github.com/samarth-2006SJW/MINI_RL_ENVIRONMENT.git"
-
- Navigate to MINI_RL_ENVIRONMENT folder by running:
-
-    cd MINI_RL_ENVIRONMENT
-
-#### Step 2: Create a virtual environment and activation
-In powershell inside MINI_RL_ENVIRONMENT run:
-
-    python -m venv .venv
-    .venv/Scripts/activate
-
-For macOS/Linux users:
-
-    python3 -m venv venv
-    source venv/bin/activate
-
-#### Step 3: Installing Dependencies
-    pip install --upgrade pip
-    pip install -r requirements.txt
-
-* This will install essential libraries including fastapi, uvicorn, openenv-core, and pydantic.
-
-#### Step 4:Running the application
-Firstly you'll need your own API keys,LLM models and their Base URL's.
-
-* Inside powershell run:
-
- `#Set your OpenAI API Key (or compatible provider like NVIDIA NIM)`
-
-    $env:OPENAI_API_KEY="paste-your-own-key"
-` #Set the base URL for the LLM provider` 
-
-    $env:LLM_BASE_URL="paste-your-own-URL"
-
-` #Specify the model you want the agent to use`
-
-    $env:LLM_MODEL="paste-model-you-use"
-
-* For macOS/Linux users run:
-
-`# Set your OpenAI API Key`
-
-    export OPENAI_API_KEY="your-api-key-here"
-
-`# Set the base URL for the LLM provider`
-
-    export LLM_BASE_URL="https://api.openai.com/v1"
-
-`# Specify the model you want the agent to use`
-
-    export LLM_MODEL="gpt-4o"
-* Now run:
-
-      python app.py
-
-## System Architecture & Logical Flow 
-```mermaid
-graph LR
-    %% Custom UI Colors
-    classDef serverNode fill:#6c5ce7,stroke:#a29bfe,stroke-width:2px,color:#ffffff,rx:8px,ry:8px;
-    classDef blockNode fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#dfe6e9,rx:8px,ry:8px;
-    classDef dataNode fill:#2d3436,stroke:#55efc4,stroke-width:2px,color:#dfe6e9;
-    classDef actorNode fill:#d63031,stroke:#ff7675,stroke-width:2px,color:#ffffff;
-
-    subgraph Trigger ["Trigger"]
-        Agent(("User / RL Agent")):::actorNode
-    end
-
-    subgraph Deployment ["Deployment"]
-        Srv["Srv"]:::serverNode
-        Config_Build["Config_Build"]:::dataNode
-    end
-
-    subgraph Presentation ["Presentation"]
-        App["App"]:::blockNode
-    end
-
-    subgraph Core ["Core"]
-        Env["Env"]:::blockNode
-        Models["Models"]:::blockNode
-        Utils["Utils"]:::blockNode
-        Yaml["Yaml"]:::dataNode
-    end
-
-    subgraph Eval ["Eval"]
-        Tasks["Tasks"]:::blockNode
-    end
-
-    %% Flow
-    Agent -->|"Trigger"| Srv
-    Srv -->|"Process"| App
-    App -->|"Transform"| Env
-    
-    Env -.->|"Defines"| Models
-    Env -.->|"Defines"| Utils
-    Env -->|"Converts"| Yaml
-    Env -->|"Contains"| Tasks
-    
-    Tasks -->|"Evaluates"| Env
-    Env -->|"Returns"| App
-    App -->|"Queries"| Agent
-
-```    
-    
-## Core Mission
-
- Unlike standard pathfinding simulations, this project focuses on Decision Intelligence under Uncertainty. The agent is tasked with:
-
-* Triage & Resolution: Identifying and fixing critical failures (Robot blockages, inventory shortages, shipment delays).
-
-* Handling Partial Observability: Managing "Noisy Observations" where sensors may fail or provide incomplete data, requiring the agent to proactively "poll" for better information.
-
-* Multi-Objective Optimization: Balancing speed of resolution against resource costs and operational penalties.
-
-By utilizing a modular architecture—separating "The Physics" (environment logic) from "The Judge" (grading logic)—this project provides a rigorous testing ground for LLM-based agents and traditional RL models to prove they can handle the chaotic edge cases of real-world logistics.
-
-## 🏗️ Component Anatomy: Technical Deep Dive
-
-### A. `inference.py` (Validator-Critical Runtime)
-This file is the Phase-2 critical execution path used during deep validation.
-
-1. Why this file matters:
-* Validator parses `[START]`, `[STEP]`, `[END]` blocks from this runtime.
-* It expects at least 3 tasks with graders and valid bounded scores.
-* It also expects outbound LLM calls through injected proxy credentials.
-
-2. Current design guarantees:
-* Runs 3 tasks (`easy`, `medium`, `hard`) in one submission run.
-* Initializes OpenAI client strictly via:
-  * `base_url = os.environ["API_BASE_URL"]`
-  * `api_key = os.environ["API_KEY"]`
-* Uses model output parsing with safe JSON fallback to `WAIT` action.
-* Ensures each task emits:
-  * one `[START]`
-  * multiple `[STEP]`
-  * one `[END]` with `score=...`
-
-3. Scoring safety:
-* Score is clamped into strict open interval `(0, 1)` via `MIN_SCORE=0.01`, `MAX_SCORE=0.99`.
-* This prevents rejection due to exact `0.0` or `1.0`.
-
-4. Failure resilience:
-* Even malformed model output does not crash the run.
-* Invalid actions fallback safely, keeping log format intact.
-
-### B. `app.py` (Judge-Facing Demo Runtime)
-This file powers FastAPI + Gradio UX and interactive simulation.
-
-1. Runtime modes:
-* LLM mode: if `OPENAI_API_KEY` exists, simulation calls model.
-* Heuristic fallback mode: if key is absent, simulation still runs end-to-end.
-
-2. Why this matters for judging:
-* Judges can click "Start Simulation" without API setup friction.
-* Demo remains deterministic and functional in restricted environments.
-
-3. Key architecture:
-* `/reset` endpoint ensures health check compatibility.
-* `run_simulation()` streams stepwise state, action logs, reward progression.
-* Grid renderer provides human-readable warehouse evolution for each step.
-
-4. Safety behavior:
-* API/JSON parsing failures are trapped and converted to safe action flow.
-* Simulation does not terminate abruptly on transient model errors.
-
-### C. `models.py` (Schema Contract Layer)
-This file defines strict typed contracts for observation space and action space.
-
-1. Core role:
-* Maps OpenEnv schema contract to Pydantic models.
-* Prevents malformed state/action payloads from entering environment logic.
-
-2. Current stability improvements:
-* Duplicate `LogisticsCommand` definition was removed.
-* Single authoritative action schema now avoids ambiguity in serialization/validation.
-
-3. Practical impact:
-* Better schema determinism for validator and downstream tooling.
-* Cleaner maintenance path for future task/action extensions.
-
-### D. `configs/easy.yaml`, `configs/medium.yaml`, `configs/hard.yaml` (Task Manifests)
-These files are lightweight scenario descriptors aligned with `openenv.yaml` task references.
-
-1. Why added:
-* `openenv.yaml` references task config files per difficulty.
-* Missing files can break deep validation chain on task loading.
-
-2. Current structure:
-* `scenario_name` binds each file to matching scenario in `scenarios.yaml`.
-* `max_steps` defines safe default upper bound for task execution.
-
-3. Validator impact:
-* Removes path-resolution failures for task metadata.
-* Keeps task registry explicit and discoverable.
-
-### E. `.gitignore` (Submission Hygiene)
-This file prevents generated artifacts from polluting commits.
-
-1. Entries:
-* `__pycache__/`
-* `*.pyc`
-
-2. Why important:
-* Cleaner diffs and reproducible submissions.
-* Avoids accidental commit noise that can distract review/debug cycles.
-
-### F. `openenv.yaml` + `configs/scenarios.yaml` (Orchestration Layer Context)
-These were already central to your setup; latest changes are aligned to them.
-
-1. `openenv.yaml`:
-* Declares environment identity, schemas, specs, and task declarations.
-* Task keys (`easy`, `medium`, `hard`) are now consistently respected by runtime.
-
-2. `configs/scenarios.yaml`:
-* Contains concrete per-scenario initial conditions:
-  * robot states
-  * blocked paths
-  * active exceptions
-  * inventory conditions
-
-3. End-to-end effect:
-* Manifest, runtime, and validation outputs now point to same canonical task names.
-
-## 4. Summary of Submission Hardening
-
-1. Deep validation compatibility:
-* 3 graded tasks present.
-* Strict score bounds preserved.
-* Required proxy-based API usage enforced in `inference.py`.
-
-2. Judge usability:
-* Demo simulation remains operational even without manual key setup (`app.py` fallback mode).
-
-3. Repository reliability:
-* Task config references resolved.
-* Schema duplication removed.
-* Build/validate pipeline remains stable and predictable.
-
-## 5. Evaluation Report (Section 1 - Measured, Reproducible)
-
-This section reports deterministic baseline performance measured on the current repository state using the built-in heuristic policy (`_heuristic_action`) and environment dynamics in `environment.py`.
-
-### Methodology
-
-1. Environment setup:
-* Map: `configs/warehouse_map.json`
-* Scenarios: `configs/scenarios.yaml`
-* Difficulties tested: `easy`, `medium`, `hard`
-
-2. Policy used:
-* Deterministic heuristic policy from `app.py` (`_heuristic_action`)
-* No manual intervention during rollout
-
-3. Rollout protocol:
-* Max episode length: 50 steps
-* Metrics collected per scenario:
-  * Steps to termination
-  * Total reward (sum of per-step rewards)
-  * Initial exceptions
-  * Exceptions resolved
-  * Remaining exceptions
-  * Success (remaining exceptions == 0)
-
-### Results
-
-| Scenario | Steps | Total Reward | Initial Exceptions | Resolved | Remaining | Success |
-|---|---:|---:|---:|---:|---:|:---:|
-| easy | 1 | 1.6860 | 1 | 1 | 0 | true |
-| medium | 4 | 3.1440 | 1 | 1 | 0 | true |
-| hard | 8 | 4.7880 | 2 | 2 | 0 | true |
-
-### Interpretation
-
-1. Resolution efficiency:
-* The heuristic fully resolves all seeded exceptions in all three scenarios.
-* Hard scenario naturally takes more steps due to multi-stage recovery (restock + recovery + exception closure).
-
-2. Reward behavior:
-* Positive total reward across scenarios indicates shaped rewards are aligned with productive resolution behavior.
-* Early termination in solved states contributes to stronger reward outcomes.
-
-3. Judge-facing takeaway:
-* Baseline policy demonstrates deterministic and stable task completion.
-* Environment supports transparent, stepwise recovery under increasing difficulty.
-
-### Reproduction Snippet
-
-Use this command from repo root to reproduce the same metrics:
-
-```powershell
-@'
+```python
 from environment import WarehouseEnvironment
-from app import _heuristic_action
 
-SCENARIOS = ["easy","medium","hard"]
-MAX_STEPS = 50
+# Create environment (choose: "easy", "medium", "hard")
+env = WarehouseEnvironment(
+    map_path="configs/warehouse_map.json",
+    scenario_path="configs/scenarios.yaml",
+    scenario_name="medium"
+)
 
-for s in SCENARIOS:
-    env = WarehouseEnvironment('configs/warehouse_map.json','configs/scenarios.yaml',s)
-    env.reset()
-    init_ex = len(env.current_state.active_exceptions)
-    total_reward = 0.0
-    steps = 0
-    done = False
-    for i in range(1, MAX_STEPS + 1):
-        action = _heuristic_action(env, s)
-        _, r, done, _ = env.step(action)
-        total_reward += r
-        steps = i
-        if done:
-            break
-    final_ex = len(env.current_state.active_exceptions)
-    resolved = init_ex - final_ex
-    success = (final_ex == 0)
-    print(f"{s}|{steps}|{total_reward:.4f}|{init_ex}|{resolved}|{final_ex}|{str(success).lower()}")
-'@ | python -
+# Reset and get initial observation
+obs = env.reset()
+print(f"Active exceptions: {len(obs['active_exceptions'])}")
+
+# Step with an action
+action = {"command_type": "REROUTE_ORDER", "target_id": "EX_002"}
+obs, reward, done, info = env.step(action)
+print(f"Reward: {reward:.4f}  Done: {done}")
+print(f"Events: {info['event_log']}")
 ```
 
-## 6. Deterministic Replay Logs (Section 2 - Audit Trail)
+## Server Setup
 
-This section adds a fixed replay artifact layer so reviewers can inspect exact step-by-step behavior per scenario without running the UI.
+### Docker (Recommended)
 
-### Included Artifacts
-
-1. [easy_run.txt](logs/easy_run.txt)
-2. [medium_run.txt](logs/medium_run.txt)
-3. [hard_run.txt](logs/hard_run.txt)
-
-Each file includes:
-* initial exception count
-* action selected at each step
-* reward per step
-* exception transition (`before -> after`)
-* terminal status and final metrics
-* environment event logs emitted by `environment.py`
-
-### Generator Script
-
-Replay logs are generated by:
-* [generate_replay_logs.py](scripts/generate_replay_logs.py)
-
-Run from repo root:
-
-```powershell
-python scripts/generate_replay_logs.py
+```bash
+docker build -t warehouse-rl:latest .
+docker run --rm -p 7860:7860 \
+  -e HF_TOKEN=your_api_key \
+  -e API_BASE_URL=https://api.openai.com/v1 \
+  -e MODEL_NAME=gpt-4o-mini \
+  warehouse-rl:latest
 ```
 
-This command regenerates all three logs in `logs/` using deterministic heuristic policy rules.
+### Without Docker
 
-## 7. Config Knobs (Section 3 - Explicitly Implemented)
-
-Tunable runtime knobs are now explicitly declared inside each scenario block in [scenarios.yaml](configs/scenarios.yaml) under `config:`.
-
-### Completion/Constraint Knobs (`tasks.py`)
-
-1. `min_inventory`
-2. `min_inventory_medium`
-3. `min_battery`
-4. `max_time_steps`
-
-### Reward Shaping Knobs (`environment.py`)
-
-1. `step_penalty`
-2. `resolution_reward`
-3. `completion_reward`
-4. `timeout_penalty`
-
-### Dynamic Difficulty Knobs (`environment.py`)
-
-1. `new_exception_chance`
-2. `max_active_exceptions`
-
-Default values are set to preserve current stable behavior, with dynamic exception injection disabled by default (`new_exception_chance: 0.0`).
-
-## 8. How To Run (Local vs Docker vs Hugging Face)
-
-This project supports three execution paths. Use the one that matches your setup.
-
-### A. Local Python Run (Fastest for development)
-
-```powershell
+```bash
 python -m venv .venv
-.venv\Scripts\activate
+# Windows:  .venv\Scripts\activate
+# Linux/Mac: source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-Notes:
-1. UI starts on `http://localhost:7860`.
-2. If `OPENAI_API_KEY` is not set, app still runs in heuristic fallback mode.
-3. Optional LLM env vars for UI mode:
-  `OPENAI_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`.
+The interactive Gradio UI starts at `http://localhost:7860`.
 
-### B. Docker Run (Reproducible containerized run)
+## Running Inference (Hackathon Evaluation)
 
-```powershell
-docker build -t warehouse-rl .
-docker run --rm -p 7860:7860 ^
-  -e OPENAI_API_KEY=your_key ^
-  -e LLM_BASE_URL=https://api.openai.com/v1 ^
-  -e LLM_MODEL=gpt-4o ^
-  warehouse-rl
+The hackathon validator runs `inference.py` directly and checks its structured stdout.
+
+**Required environment variables:**
+
+| Variable | Description |
+|---|---|
+| `HF_TOKEN` | Your Hugging Face / LLM provider API key |
+| `API_BASE_URL` | LLM endpoint (e.g. `https://api.openai.com/v1`) |
+| `MODEL_NAME` | Model identifier (e.g. `gpt-4o-mini`) |
+
+```bash
+export HF_TOKEN="your_key"
+export API_BASE_URL="https://api.openai.com/v1"
+export MODEL_NAME="gpt-4o-mini"
+python inference.py
 ```
 
-Notes:
-1. Dockerfile already exposes port `7860`.
-2. Container starts with `python app.py`.
-3. You can omit API key to test fallback behavior.
+Expected output format:
 
-### C. Hugging Face Space Run (Hosted deployment)
-
-Repository is deployed as a Docker Space:
-* Space URL: `https://huggingface.co/spaces/samarth2006SJW/Automated_Logistics_Exception_Handler`
-
-To push updates:
-
-```powershell
-git push origin main
-$env:HF_TOKEN=\"<your_hf_token>\"
-git push \"https://samarth2006SJW:$env:HF_TOKEN@huggingface.co/spaces/samarth2006SJW/Automated_Logistics_Exception_Handler\" main:main
+```
+[START] task=easy env=warehouse-logistics-v1 model=gpt-4o-mini
+[STEP] step=1 action=REROUTE_ORDER reward=1.0000 done=true error=null
+[END] success=true steps=1 score=0.9900
+[START] task=medium ...
+...
 ```
 
-Recommended Space secrets for LLM mode:
-1. `OPENAI_API_KEY`
-2. `LLM_BASE_URL`
-3. `LLM_MODEL`
+## Action Space
 
-### D. Hackathon Validator Runtime Clarification
+| Field | Type | Description |
+|---|---|---|
+| `command_type` | str | One of: `MOVE_ROBOT`, `REROUTE_ORDER`, `DISPATCH_MAINTENANCE`, `REQUEST_RESTOCK`, `ASSIGN_WORKER`, `RE_POLL_SENSOR`, `WAIT` |
+| `target_id` | str \| None | ID of the robot, exception, or order to act on |
+| `parameters` | dict | Optional params (e.g. `{"target_location": [3, 4]}` for `MOVE_ROBOT`, `{"component_name": "component_A"}` for `REQUEST_RESTOCK`) |
 
-For Phase-2 deep validation, `inference.py` uses the injected variables:
-1. `API_BASE_URL`
-2. `API_KEY`
-3. optional `MODEL_NAME`
+## Observation Space (`WarehouseState`)
 
-This is separate from UI variables (`OPENAI_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`).
+| Field | Type | Description |
+|---|---|---|
+| `time_step` | int | Current simulation step |
+| `worker_availability` | int | Available human workers |
+| `inventory_status` | dict | Component name → stock level |
+| `robots` | list | List of `Robot` objects (id, location, status, battery_level) |
+| `blocked_paths` | list | List of `BlockedPath` objects (id, location, obstruction_type, severity) |
+| `active_exceptions` | list | List of `ExceptionIssue` objects requiring resolution |
 
-## 9. Pre-Submission Guard (Section 4 - Regression Safety)
+## Task Scenarios
 
-To reduce last-minute submission regressions, use the automated guard script before every final push.
+| Task | Description | Success Criteria |
+|---|---|---|
+| `easy` | Single shipment delay → locate component, reroute order | All exceptions resolved, inventory above threshold |
+| `medium` | Inventory shortage → verify stock, restock, notify | Easy criteria + all inventory above medium threshold |
+| `hard` | Cascading robot failure → dispatch maintenance, clear aisle, reroute | Medium criteria + all robots active, battery above threshold |
 
-Guard script:
-* [pre_submission_guard.py](scripts/pre_submission_guard.py)
+## Reward
 
-### What It Verifies
+Reward is strictly bounded in `[0.0, 1.0]` per episode using a **progress-delta** method:
 
-1. Inference proxy contract (`inference.py`):
-* `API_KEY` is read from `os.environ["API_KEY"]`
-* `API_BASE_URL` is read from `os.environ["API_BASE_URL"]`
-* OpenAI client is initialized with `base_url=API_BASE_URL` and `api_key=API_KEY`
+- Each step: `reward = current_progress − previous_progress`
+- `progress` = fraction of initial exceptions resolved ∈ [0.0, 1.0]
+- All exceptions resolved → total episode reward = `1.0`
+- No progress made → total episode reward = `0.0`
 
-2. Task/score safety:
-* At least 3 tasks are declared in `TASKS`
-* Score clamps satisfy strict bound rule: `0 < MIN_SCORE < MAX_SCORE < 1`
+## Project Structure
 
-3. Manifest consistency:
-* `openenv.yaml` has at least 3 task entries
-* Every task key exists in `configs/scenarios.yaml`
-* Every `config_path` referenced in `openenv.yaml` exists on disk
-
-4. OpenEnv readiness:
-* Executes `openenv validate` and fails fast if contract/build checks break
-
-### How To Run
-
-```powershell
-python scripts/pre_submission_guard.py
+```
+warehouse-logistics-v1/
+├── README.md               # This file
+├── openenv.yaml            # OpenEnv manifest
+├── Dockerfile              # Container image definition
+├── app.py                  # Gradio UI + FastAPI /reset endpoint
+├── inference.py            # Hackathon evaluation script
+├── environment.py          # Core RL environment logic
+├── models.py               # Pydantic schemas (Action & Observation)
+├── tasks.py                # Per-difficulty graders (easy/medium/hard)
+├── utils.py                # Config loading, collision detection
+├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Package metadata
+└── configs/
+    ├── openenv.yaml        # OpenEnv manifest
+    ├── warehouse_map.json  # Grid layout, dimensions, charging stations
+    ├── scenarios.yaml      # Per-scenario initial conditions
+    ├── easy.yaml           # Task config reference (easy)
+    ├── medium.yaml         # Task config reference (medium)
+    └── hard.yaml           # Task config reference (hard)
 ```
 
-Expected output ends with:
-* `[OK] All guard checks passed. Repository is submission-safe.`
+## Learn More
 
-### Why This Helps
-
-This guard is intentionally narrower and faster than full end-to-end deployment checks.  
-Use it before commits, then run `validate-submission.sh` as the final gate.
-
-## 10. Judge-First UI Context (Section 5 - Scenario Summary Panel)
-
-To reduce reviewer friction, the Gradio app now includes a **Scenario Summary** panel that is visible throughout simulation.
-
-Implemented in:
-* [app.py](app.py)
-
-### What The Panel Shows
-
-1. Selected scenario (`easy`, `medium`, `hard`)
-2. UI episode cap (max steps selected in slider)
-3. Initial exception count
-4. Robot count
-5. Blocked path count
-6. Low-stock component list (`<= 50`)
-
-### Why This Improves Judge Experience
-
-1. Faster context loading:
-* Reviewers immediately see scenario pressure before first action.
-
-2. Better interpretability:
-* Action logs and KPI trends can be interpreted against known initial complexity.
-
-3. Stronger demo clarity:
-* The environment no longer relies on hidden assumptions at review time; operational constraints are visible in-panel.
+- [OpenEnv Documentation](https://github.com/meta-pytorch/OpenEnv)
+- [Meta PyTorch OpenEnv Hackathon](https://github.com/meta-pytorch/OpenEnv/blob/main/README.md)

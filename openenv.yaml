@@ -27,20 +27,15 @@ specs:
 tasks:
   easy:
     name: "Minor Shipment Delay"
-
     description: "A package is flagged as delayed due to a missing component. The agent must locate the component and reroute."
-
     config_path: "configs/easy.yaml"
+
   medium:
     name: "Inventory Shortage Triage"
-
-    description: "Multiple high-priority orders require an out-of-stock item.
-     The agent must verify stock, request restock, and notify customers."
-
+    description: "Multiple high-priority orders require an out-of-stock item. The agent must verify stock, request restock, and notify customers."
     config_path: "configs/medium.yaml"
+
   hard:
     name: "Cascading Failure"
-
-    description: "A robot breaks down causing a traffic jam. The agent must dispatch maintenance, assign workers to clear the aisle, and use optimal A* pathfinding to reroute other robots around the broken unit."
-    
+    description: "A robot breaks down causing a traffic jam. The agent must dispatch maintenance, assign workers to clear the aisle, and reroute other robots."
     config_path: "configs/hard.yaml"
