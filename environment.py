@@ -47,12 +47,13 @@ class WarehouseEnvironment(BaseEnv):
         info.setdefault("event_log", []).append(message)
 
     def _compute_progress(self) -> float:
-        """Return fraction of initial exceptions resolved ∈ [0.0, 1.0]."""
+        """Return fraction of initial exceptions resolved, scaled to max 0.99."""
         if self._initial_exceptions <= 0:
-            return 1.0
+            return 0.99
         remaining = len(self.current_state.active_exceptions)
         resolved  = max(0, self._initial_exceptions - remaining)
-        return float(resolved) / float(self._initial_exceptions)
+        fraction = float(resolved) / float(self._initial_exceptions)
+        return round(fraction * 0.99, 4)
 
     def _maybe_inject_dynamic_exception(self, info: Dict) -> None:
         cfg   = self.current_state.config or {}
