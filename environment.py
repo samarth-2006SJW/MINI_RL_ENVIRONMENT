@@ -37,23 +37,14 @@ class WarehouseEnvironment(BaseEnv):
 
         self.current_state: Optional[WarehouseState] = None
         self.total_reward  = 0.0
-        self._initial_exceptions = 0   # set in reset, used for progress calc
-        self._prev_progress  = 0.0    # tracks last step's progress level
+        self._initial_exceptions = 0
+        self._exceptions_resolved_this_step = 0
         self._initialize_state()
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     def _log_event(self, info: Dict, message: str) -> None:
         info.setdefault("event_log", []).append(message)
-
-    def _compute_progress(self) -> float:
-        """Return fraction of initial exceptions resolved, scaled to max 0.99."""
-        if self._initial_exceptions <= 0:
-            return 0.99
-        remaining = len(self.current_state.active_exceptions)
-        resolved  = max(0, self._initial_exceptions - remaining)
-        fraction = float(resolved) / float(self._initial_exceptions)
-        return round(fraction * 0.99, 4)
 
     def _maybe_inject_dynamic_exception(self, info: Dict) -> None:
         cfg   = self.current_state.config or {}
@@ -101,7 +92,7 @@ class WarehouseEnvironment(BaseEnv):
         self._initialize_state()
         self.total_reward         = 0.0
         self._initial_exceptions  = len(self.current_state.active_exceptions)
-        self._prev_progress       = 0.0
+        self._exceptions_resolved_this_step = 0
         return self.state()
 
     def state(self) -> Dict:
@@ -128,12 +119,17 @@ class WarehouseEnvironment(BaseEnv):
         -------
         (observation, reward, terminated, info)
 
-        reward is always in [0.0, 1.0] — it is the progress delta since the last step.
+        Reward uses a Time-Decaying Pot:
+        - Max pot starts at 0.99.
+        - Pot shrinks dynamically with each step taken (penalizing inefficiency).
+        - When an exception is resolved, it awards (1 / total_exceptions) * current_pot.
+        - Guarantees exactly 0.0-0.99 math range.
         """
         terminated = False
         info       = {"event_log": []}
         cfg        = self.current_state.config or {}
         max_time_steps = int(cfg.get("max_time_steps", 50))
+        self._exceptions_resolved_this_step = 0
 
         # ── Parse action ─────────────────────────────────────────────────────
         try:
@@ -215,6 +211,7 @@ class WarehouseEnvironment(BaseEnv):
                 if target_id == exc.id or (exc.affected_orders and target_id in exc.affected_orders):
                     self.current_state.active_exceptions.remove(exc)
                     resolved = True
+                    self._exceptions_resolved_this_step += 1
                     self._log_event(info, f"Resolved exception {exc.id}")
 
             if not resolved:
@@ -229,11 +226,13 @@ class WarehouseEnvironment(BaseEnv):
         # ── Advance time ─────────────────────────────────────────────────────
         self.current_state.time_step += 1
 
-        # ── Compute progress-delta reward (strictly bounded 0.0–1.0) ─────────
-        current_progress = self._compute_progress()
-        reward           = round(current_progress - self._prev_progress, 6)
-        reward           = max(0.0, reward)   # clamp negatives (dynamic injection edge-case)
-        self._prev_progress = current_progress
+        # ── Compute Time-Decaying Reward (Strictly 0.0-0.99 mathematically bounded) ──
+        reward = 0.0
+        if self._exceptions_resolved_this_step > 0 and self._initial_exceptions > 0:
+            # Pot shrinks by 0.015 each step, but never goes below 0.20 (so solving is always worth *something*)
+            current_pot = max(0.20, 0.99 - (self.current_state.time_step * 0.015))
+            fraction_resolved = self._exceptions_resolved_this_step / float(self._initial_exceptions)
+            reward = round(fraction_resolved * current_pot, 4)
 
         # ── Termination conditions ────────────────────────────────────────────
         if tasks.check_completion(self.current_state, difficulty=self.scenario_name):
