@@ -589,9 +589,9 @@ with gr.Blocks(theme=gr.themes.Base(), css=custom_css) as demo:
                 with gr.Column(scale=1, elem_classes=["terminal-panel"]):
                     gr.Markdown("<h3 style='color:#e2e8f0; margin-bottom:5px;'>Agent Event Log</h3>")
                     terminal_log = gr.HTML(
-                        "<div style="background-color: #0d1117; color: #10b981; font-family: 'Courier New', Courier, monospace; padding: 15px; border-radius: 8px; border: 1px solid #30363d; height: 300px; overflow-y: auto; font-size: 13px;">"
-                        "Awaiting initialization sequence...<span style="animation: blink 1s step-end infinite;">█</span></div>"
-                        "<style>@keyframes blink { 50% { opacity: 0; } }</style>"
+                        '<div style="background-color: #0d1117; color: #10b981; font-family: \'Courier New\', Courier, monospace; padding: 15px; border-radius: 8px; border: 1px solid #30363d; height: 300px; overflow-y: auto; font-size: 13px;">'
+                        'Awaiting initialization sequence...<span style="animation: blink 1s step-end infinite;">█</span></div>'
+                        '<style>@keyframes blink { 50% { opacity: 0; } }</style>'
                     )
 
     # Wire up the button
