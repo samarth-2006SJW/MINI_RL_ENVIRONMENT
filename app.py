@@ -258,6 +258,7 @@ def health_check():
     return {"status": "ok", "message": "OVERSEER ENGINE ONLINE"}
 
 
+@app.post("/reset")
 @app.post("/api/reset")
 def reset_endpoint():
     return {"status": "ok", "message": "Environment reset triggered."}
