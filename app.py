@@ -3,6 +3,7 @@ import json
 import time
 from typing import Optional
 import gradio as gr
+import pandas as pd
 import openai
 from environment import WarehouseEnvironment
 from models import WarehouseState, RobotStatus
@@ -417,6 +418,14 @@ def render_warehouse_grid(env: WarehouseEnvironment) -> str:
 # ---------------------------------------------------------------------------
 # Simulation Logic
 # ---------------------------------------------------------------------------
+def format_hacker_terminal(history):
+    lines = "<br>".join(history)
+    return f"""<div style="background-color: #0d1117; color: #10b981; font-family: 'Courier New', Courier, monospace; padding: 15px; border-radius: 8px; border: 1px solid #30363d; height: 300px; overflow-y: auto; font-size: 13px;">
+{lines if lines else 'Initializing agent connection...'}
+<span style="animation: blink 1s step-end infinite;">█</span>
+</div>
+<style>@keyframes blink {{ 50% {{ opacity: 0; }} }}</style>"""
+
 def run_simulation(scenario, max_steps):
     client = _get_llm_client()
     use_heuristic = client is None
@@ -427,7 +436,6 @@ def run_simulation(scenario, max_steps):
         scenario_name=scenario
     )
     env.reset()
-    scenario_summary = _scenario_summary_markdown(env, scenario, max_steps)
     
     action_history = []
     failed_action_memory = []
@@ -436,37 +444,34 @@ def run_simulation(scenario, max_steps):
     successful_actions = 0
     total_actions = 0
     
+    plot_data = []
+
     for step in range(1, max_steps + 1):
         state_text = env._state_to_text()
         recent_history_str = "\n".join(action_history[-5:]) if action_history else "No history."
         failed_actions_str = ", ".join(failed_action_memory[-5:]) if failed_action_memory else "None"
         
-        # 1. Visualize Grid
-        # Initial status for thinking state
         exceptions_before = len(env.current_state.active_exceptions)
         mode_label = "Heuristic Fallback" if use_heuristic else "LLM"
-        status_md = f"**Step:** {step} | **Mode:** {mode_label} | **Exceptions:** {exceptions_before} | **Total Reward:** {total_reward:.2f} | ⏳ *Generating Action...*"
         
-        pre_kpi = _kpi_markdown(
-            step=step,
-            mode_label=mode_label,
-            total_reward=total_reward,
-            exceptions_before=exceptions_before,
-            exceptions_after=exceptions_before,
-            resolved_count=resolved_count,
-            successful_actions=successful_actions,
-            total_actions=total_actions,
-        )
+        if step == 1:
+            plot_data.append({"Step": 0, "Total Reward": 0.0})
+            
+        kpi_md = f"""<div style='color:#e2e8f0; font-family: sans-serif;'>
+        <div style='margin-bottom:8px;'><b>Status:</b> ⏳ Generating Action...</div>
+        <div style='margin-bottom:8px;'><b>Step:</b> {step} / {max_steps}</div>
+        <div style='margin-bottom:8px;'><b>Mode:</b> {mode_label}</div>
+        <div style='margin-bottom:8px;'><b>Reward:</b> <span style='color:#22c55e;'>{total_reward:.2f}</span></div>
+        <div style='margin-bottom:8px;'><b>Exceptions:</b> <span style='color:#ef4444;'>{exceptions_before}</span></div>
+        </div>"""
+        
         yield (
             render_warehouse_grid(env),
-            status_md,
-            "\n".join(action_history) if action_history else "System initialized. Agent is preparing...",
-            pre_kpi,
-            "Preparing next action...",
-            scenario_summary,
+            pd.DataFrame(plot_data) if plot_data else pd.DataFrame(columns=["Step", "Total Reward"]),
+            format_hacker_terminal(action_history),
+            kpi_md
         )
         
-        # 3. Get LLM Action
         error_logs = []
         if use_heuristic:
             action = _heuristic_action(env, scenario)
@@ -474,7 +479,6 @@ def run_simulation(scenario, max_steps):
             prompt = _build_prompt(state_text, recent_history_str, failed_actions_str)
             action, error_logs = _call_llm_for_action(client, prompt)
             
-        # 4. Step Environment
         _, reward, terminated, info = env.step(action)
             
         total_reward += reward
@@ -484,76 +488,119 @@ def run_simulation(scenario, max_steps):
             failed_action_memory.append(action_key)
         if reward > 0.0:
             successful_actions += 1
-        
-        # Log entry
+            
         logs = info.get("event_log", ["Agent waited."])
         if error_logs:
             logs = error_logs + logs
         exceptions_after = len(env.current_state.active_exceptions)
         if exceptions_after < exceptions_before:
             resolved_count += (exceptions_before - exceptions_after)
-        action_reason = _action_reasoning(action, scenario, exceptions_before)
+            
         log_entry = (
-            f"Step {step}: mode={'heuristic' if use_heuristic else 'llm'} "
-            f"action={json.dumps(action)} reward={reward:.2f} "
-            f"exceptions={exceptions_after} "
-            f"notes={'; '.join(logs)}"
+            f"<span style='color:#3b82f6'>[Step {step}]</span> action=<span style='color:#d946ef'>{json.dumps(action)}</span> "
+            f"reward=<span style='color:#22c55e'>{reward:.2f}</span> "
+            f"exceptions=<span style='color:#ef4444'>{exceptions_after}</span> "
+            f"<br>&nbsp;&nbsp;↳ <i>{'; '.join(logs)}</i>"
         )
         action_history.append(log_entry)
         
-        # Update metrics AFTER the step
-        final_status = f"**Step:** {step} | **Exceptions:** {exceptions_after} | **Total Reward:** {total_reward:.2f}"
-        kpi_md = _kpi_markdown(
-            step=step,
-            mode_label=mode_label,
-            total_reward=total_reward,
-            exceptions_before=exceptions_before,
-            exceptions_after=exceptions_after,
-            resolved_count=resolved_count,
-            successful_actions=successful_actions,
-            total_actions=total_actions,
-        )
+        plot_data.append({"Step": step, "Total Reward": total_reward})
         
-        # Yield update
+        status_text = "🏆 MISSION COMPLETE!" if (total_reward > 0 and exceptions_after == 0) else ("🚨 MISSION FAILED" if terminated else "✅ Step Completed")
+        kpi_md = f"""<div style='color:#e2e8f0; font-family: sans-serif;'>
+        <div style='margin-bottom:8px;'><b>Status:</b> {status_text}</div>
+        <div style='margin-bottom:8px;'><b>Step:</b> {step} / {max_steps}</div>
+        <div style='margin-bottom:8px;'><b>Mode:</b> {mode_label}</div>
+        <div style='margin-bottom:8px;'><b>Reward:</b> <span style='color:#22c55e;'>{total_reward:.2f}</span></div>
+        <div style='margin-bottom:8px;'><b>Exceptions:</b> <span style='color:#ef4444;'>{exceptions_after}</span></div>
+        </div>"""
+        
         if terminated or exceptions_after == 0:
-            if total_reward > 0 and exceptions_after == 0:
-                final_status += " | 🏆 **MISSION COMPLETE!**"
-            else:
-                final_status += " | 🚨 **MISSION ENDED/FAILED**"
-            yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason, scenario_summary
+            yield (
+                render_warehouse_grid(env),
+                pd.DataFrame(plot_data),
+                format_hacker_terminal(action_history),
+                kpi_md
+            )
             break
             
-        yield render_warehouse_grid(env), final_status, "\n".join(action_history), kpi_md, action_reason, scenario_summary
-        time.sleep(1) # Slow down for visualization
+        yield (
+            render_warehouse_grid(env),
+            pd.DataFrame(plot_data),
+            format_hacker_terminal(action_history),
+            kpi_md
+        )
+        time.sleep(0.5)
 
 # ---------------------------------------------------------------------------
 # Gradio UI Shell
 # ---------------------------------------------------------------------------
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) as demo:
-    gr.Markdown("# 🤖 Autonomous Warehouse RL Controller")
-    gr.Markdown("Watch an LLM-based agent resolve warehouse logistics exceptions in real-time.")
-    
-    with gr.Row():
-        with gr.Column(scale=1):
-            scenario = gr.Dropdown(choices=["easy", "medium", "hard"], value="medium", label="Select Scenario")
-            steps = gr.Slider(minimum=5, maximum=50, value=20, step=1, label="Max Steps")
-            start_btn = gr.Button("🚀 Start Simulation", variant="primary")
-            
-        with gr.Column(scale=2):
-            status = gr.Markdown("### Status: Ready")
-            grid = gr.HTML("<div style='color:#94a3b8; padding: 20px; font-family: sans-serif;'>Grid will appear here...</div>")
-            kpi = gr.Markdown("### Live KPIs\n- Waiting for simulation start")
-            summary = gr.Markdown("### Scenario Summary\n- Select a scenario and start simulation")
-            
-    with gr.Row():
-        logs = gr.Textbox(label="Agent Reasoning & Event Logs", lines=10, interactive=False)
-    with gr.Row():
-        decision = gr.Textbox(label="Why This Action", lines=3, interactive=False)
+custom_css = """
+body { background-color: #0f172a; }
+.gradio-container { background-color: #0f172a !important; }
+.sidebar-panel { background: rgba(22, 27, 34, 0.7); backdrop-filter: blur(10px); border-radius: 12px; border: 1px solid #1e293b; padding: 20px; }
+.stage-panel { background: rgba(22, 27, 34, 0.7); backdrop-filter: blur(10px); border-radius: 12px; border: 1px solid #1e293b; padding: 20px; }
+.terminal-panel { background: transparent; border: none; padding: 0; box-shadow: none; margin-top: 15px;}
+"""
 
-    start_btn.click(run_simulation, inputs=[scenario, steps], outputs=[grid, status, logs, kpi, decision, summary])
+with gr.Blocks(theme=gr.themes.Base(), css=custom_css) as demo:
+    with gr.Row():
+        # LEFT SIDEBAR
+        with gr.Column(scale=1, elem_classes=["sidebar-panel"]):
+            gr.Markdown("<h2 style='color:#e2e8f0; margin-top:0;'>🤖 Logistics Hub</h2>")
+            gr.Markdown("<p style='color:#94a3b8; font-size:13px;'>Simulation Engine & Agent Control</p>")
+            gr.HTML("<hr style='border-color: #334155;'>")
+            
+            scenario = gr.Dropdown(choices=["easy", "medium", "hard"], value="medium", label="Scenario Protocol")
+            steps = gr.Slider(minimum=5, maximum=50, value=20, step=1, label="Operation Max Time")
+            start_btn = gr.Button("🚀 Run Agent", variant="primary")
+            
+            gr.HTML("<hr style='border-color: #334155; margin-top:20px; margin-bottom:20px;'>")
+            gr.Markdown("<h3 style='color:#e2e8f0;'>Quick Stats</h3>")
+            kpi_html = gr.HTML(
+                "<div style='color:#94a3b8; font-family: sans-serif; font-size:14px;'>"
+                "<div style='margin-bottom:8px;'><b>Status:</b> Ready Mode</div>"
+                "<div style='margin-bottom:8px;'><b>Step:</b> 0</div>"
+                "<div style='margin-bottom:8px;'><b>Reward:</b> 0.00</div>"
+                "</div>"
+            )
+
+        # MAIN STAGE
+        with gr.Column(scale=3):
+            # TOP ROW: Grid & LinePlot
+            with gr.Row():
+                with gr.Column(scale=1, elem_classes=["stage-panel"]):
+                    grid = gr.HTML("<div style='color:#94a3b8; font-family: sans-serif;'>Initializing Core System Layer...</div>")
+                
+                with gr.Column(scale=1, elem_classes=["stage-panel"]):
+                    gr.Markdown("<h3 style='color:#e2e8f0; margin-top:0;'>Simulation Trajectory</h3>")
+                    plot = gr.LinePlot(
+                        x="Step", 
+                        y="Total Reward", 
+                        title="Cumulative Reward vs Time",
+                        width=400, 
+                        height=250, 
+                        tooltip=["Step", "Total Reward"],
+                        color_discrete_sequence=["#38bdf8"]
+                    )
+                    
+            # BOTTOM ROW: Terminal Log
+            with gr.Row():
+                with gr.Column(scale=1, elem_classes=["terminal-panel"]):
+                    gr.Markdown("<h3 style='color:#e2e8f0; margin-bottom:5px;'>Agent Event Log</h3>")
+                    terminal_log = gr.HTML(
+                        "<div style="background-color: #0d1117; color: #10b981; font-family: 'Courier New', Courier, monospace; padding: 15px; border-radius: 8px; border: 1px solid #30363d; height: 300px; overflow-y: auto; font-size: 13px;">"
+                        "Awaiting initialization sequence...<span style="animation: blink 1s step-end infinite;">█</span></div>"
+                        "<style>@keyframes blink { 50% { opacity: 0; } }</style>"
+                    )
+
+    # Wire up the button
+    start_btn.click(
+        run_simulation, 
+        inputs=[scenario, steps], 
+        outputs=[grid, plot, terminal_log, kpi_html]
+    )
 
 if __name__ == "__main__":
-    # Mount Gradio onto the FastAPI app
     app = gr.mount_gradio_app(app_api, demo, path="/")
     uvicorn.run(app, host="0.0.0.0", port=7860)
-
