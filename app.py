@@ -1,20 +1,31 @@
+"""
+FastAPI backend for Warehouse RL Environment.
+Serves the React frontend from dist/ and exposes API endpoints
+for environment interaction.
+"""
 import os
 import json
+import re
 import time
 from typing import Optional
-import gradio as gr
-import pandas as pd
+from pathlib import Path
+
 import openai
-from environment import WarehouseEnvironment
-from models import WarehouseState, RobotStatus
+import asyncio
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
 import uvicorn
 
-app_api = FastAPI()
+from environment import WarehouseEnvironment
+from models import WarehouseState, RobotStatus
 
-@app_api.post("/reset")
-def reset_endpoint():
-    return {"status": "ok", "message": "Environment reset triggered."}
+# ---------------------------------------------------------------------------
+# FastAPI Application
+# ---------------------------------------------------------------------------
+app = FastAPI(title="Warehouse RL - OVERSEER ENGINE")
 
 # ---------------------------------------------------------------------------
 # LLM Configuration
@@ -23,7 +34,7 @@ def _get_llm_client():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return None
-    
+
     base_url = os.getenv("LLM_BASE_URL", None)
     client_kwargs = {"api_key": api_key}
     if base_url:
@@ -173,45 +184,6 @@ def _action_reasoning(action: dict, scenario: str, exceptions_before: int) -> st
     return f"Conservative policy ({scenario}): WAIT selected due to low-confidence or completed state."
 
 
-def _kpi_markdown(
-    step: int,
-    mode_label: str,
-    total_reward: float,
-    exceptions_before: int,
-    exceptions_after: int,
-    resolved_count: int,
-    successful_actions: int,
-    total_actions: int,
-) -> str:
-    action_eff = (successful_actions / total_actions) if total_actions > 0 else 0.0
-    return (
-        "### Live KPIs\n"
-        f"- Mode: **{mode_label}**\n"
-        f"- Step: **{step}**\n"
-        f"- Total Reward: **{total_reward:.2f}**\n"
-        f"- Exceptions: **{exceptions_before} -> {exceptions_after}**\n"
-        f"- Resolved Exceptions: **{resolved_count}**\n"
-        f"- Action Efficiency: **{action_eff:.0%}**"
-    )
-
-
-def _scenario_summary_markdown(env: WarehouseEnvironment, scenario: str, max_steps: int) -> str:
-    state = env.current_state
-    if state is None:
-        return "### Scenario Summary\n- Environment not initialized"
-    low_stock = [k for k, v in state.inventory_status.items() if v <= 50]
-    low_stock_txt = ", ".join(low_stock) if low_stock else "none"
-    return (
-        "### Scenario Summary\n"
-        f"- Scenario: **{scenario}**\n"
-        f"- Episode Cap (UI): **{max_steps}** steps\n"
-        f"- Initial Exceptions: **{len(state.active_exceptions)}**\n"
-        f"- Robots: **{len(state.robots)}**\n"
-        f"- Blocked Paths: **{len(state.blocked_paths)}**\n"
-        f"- Low-Stock Components (<=50): **{low_stock_txt}**"
-    )
-
-
 def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
     state = env.current_state
     if state is None:
@@ -254,311 +226,110 @@ def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
 
     return {"command_type": "WAIT", "target_id": None}
 
-# ---------------------------------------------------------------------------
-# Visual Renderer
-# ---------------------------------------------------------------------------
 
-def render_warehouse_grid(env):
-    width = env.grid_width
-    height = env.grid_height
-    blocked_set = set(env.blocked_cells)
-    stations_set = set(env.charging_stations)
-    robots_map = {r.location: r for r in env.robots.values()}
+def _format_state_for_prompt(state: WarehouseState) -> str:
+    """Convert warehouse state to a text summary for the LLM prompt."""
+    if state is None:
+        return "No state available."
+    robots_info = []
+    for r in state.robots:
+        robots_info.append(
+            f"  - {r.id}: status={r.status}, battery={r.battery_level:.1f}%, location={r.location}"
+        )
+    exceptions_info = []
+    for e in state.active_exceptions:
+        exceptions_info.append(f"  - {e.id}: type={e.type}, severity={e.severity}")
+    inventory_info = [f"  - {k}: {v}" for k, v in state.inventory_status.items()]
+    return (
+        f"Time Step: {state.time_step}\n"
+        f"Exception Count: {len(state.active_exceptions)}\n"
+        f"Robots:\n" + "\n".join(robots_info) + "\n"
+        f"Active Exceptions:\n" + ("\n".join(exceptions_info) if exceptions_info else "  None") + "\n"
+        f"Inventory Status:\n" + "\n".join(inventory_info) + "\n"
+        f"Blocked Paths: {state.blocked_paths}\n"
+    )
 
-    html = []
-    html.append(f'''
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
-      
-      .warehouse-wrapper {{
-         background: linear-gradient(145deg, #0b1120 0%, #080b12 100%);
-         border-radius: 16px;
-         padding: 24px;
-         border: 1px solid rgba(16, 185, 129, 0.15);
-         box-shadow: 0 0 40px rgba(16, 185, 129, 0.05), inset 0 0 20px rgba(0, 0, 0, 0.5);
-         position: relative;
-         overflow: hidden;
-      }}
-      .warehouse-wrapper::before {{
-         content: "";
-         position: absolute;
-         top: 0; left: 0; right: 0; height: 1px;
-         background: linear-gradient(90deg, transparent, #10b981, transparent);
-         opacity: 0.5;
-      }}
-      .hud-header {{
-         color: #10b981; 
-         font-family: 'Outfit', sans-serif; 
-         font-size: 14px; 
-         font-weight:800; 
-         margin-bottom:16px; 
-         letter-spacing:2px; 
-         display:flex; 
-         justify-content:space-between;
-         text-transform: uppercase;
-         text-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
-      }}
-      .warehouse-grid {{
-         display: grid;
-         grid-template-columns: repeat({width}, 1fr);
-         gap: 4px;
-         background: #0f172a;
-         padding: 10px;
-         border-radius: 12px;
-         border: 1px solid #1e293b;
-      }}
-      .grid-cell {{
-         aspect-ratio: 1;
-         background: #151f32;
-         border-radius: 6px;
-         display: flex;
-         align-items: center;
-         justify-content: center;
-         position: relative;
-         border: 1px solid #1e293b;
-         transition: all 0.3s ease;
-      }}
-      .cell-blocked {{
-         background: repeating-linear-gradient(45deg, #1e293b, #1e293b 5px, #151f32 5px, #151f32 10px);
-         border-color: #334155;
-      }}
-      .cell-station {{
-         background: rgba(14, 165, 233, 0.05);
-         border-color: rgba(14, 165, 233, 0.3);
-         box-shadow: inset 0 0 10px rgba(14, 165, 233, 0.1);
-      }}
-      .station-icon {{
-         color: #0ea5e9;
-         text-shadow: 0 0 8px #0ea5e9;
-         font-size: 1.2rem;
-         animation: float 2s ease-in-out infinite;
-      }}
-      
-      /* Robot Design */
-      .robot-core {{
-         width: 60%;
-         height: 60%;
-         border-radius: 50%;
-         position: relative;
-         display: flex;
-         align-items: center;
-         justify-content: center;
-         box-shadow: 0 0 15px currentColor;
-         z-index: 10;
-      }}
-      .robot-core::after {{
-         content: "";
-         position: absolute;
-         inset: -4px;
-         border-radius: 50%;
-         border: 2px solid currentColor;
-         border-top-color: transparent;
-         animation: spin 3s linear infinite;
-      }}
-      .robot-normal {{ color: #10b981; background: rgba(16,185,129,0.2); }}
-      .robot-warning {{ color: #eab308; background: rgba(234,179,8,0.2); }}
-      .robot-critical {{ color: #ef4444; background: rgba(239,68,68,0.2); }}
-      .robot-maintenance {{ color: #ef4444; background: rgba(239,68,68,0.2); animation: pulse 1s infinite; }}
-      .robot-sensor {{ color: #f59e0b; background: rgba(245,158,11,0.2); animation: pulse 2s infinite; }}
-      
-      .bot-id {{
-         position: absolute;
-         top: -10px;
-         font-family: 'JetBrains Mono', monospace;
-         font-size: 8px;
-         color: #cbd5e1;
-         background: #0f172a;
-         padding: 1px 4px;
-         border-radius: 4px;
-         border: 1px solid #334155;
-      }}
-      
-      @keyframes spin {{ 100% {{ transform: rotate(360deg); }} }}
-      @keyframes float {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-3px); }} }}
-      @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.4; }} }}
-      
-      .exception-alert {{
-         margin-top: 20px;
-         background: linear-gradient(90deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.05) 100%);
-         border-left: 4px solid #ef4444;
-         border-radius: 4px 8px 8px 4px;
-         padding: 16px;
-         color: #fca5a5;
-         font-family: 'Outfit', sans-serif;
-         font-size: 14px;
-         display: flex;
-         align-items: center;
-         gap: 12px;
-         backdrop-filter: blur(5px);
-      }}
-      .nominal-alert {{
-         margin-top: 20px;
-         background: linear-gradient(90deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.05) 100%);
-         border-left: 4px solid #10b981;
-         border-radius: 4px 8px 8px 4px;
-         padding: 16px;
-         color: #6ee7b7;
-         font-family: 'Outfit', sans-serif;
-         font-size: 14px;
-         display: flex;
-         align-items: center;
-         gap: 12px;
-         backdrop-filter: blur(5px);
-      }}
-    </style>
-    <div class="warehouse-wrapper">
-    <div class="hud-header">
-        <span>🌐 SYSTEM.LIVE_MAP ({width}x{height})</span>
-        <span style="color:#64748b">UPLINK: SECURE</span>
-    </div>
-    <div class="warehouse-grid">
-    ''')
-
-    for y in range(height):
-        for x in range(width):
-            loc = (x, y)
-            cell_classes = ["grid-cell"]
-            content = ""
-            
-            if loc in blocked_set:
-                cell_classes.append("cell-blocked")
-            elif loc in stations_set:
-                cell_classes.append("cell-station")
-                content = "<div class='station-icon'>⚡</div>"
-            
-            r = robots_map.get(loc)
-            if r:
-                color_class = "robot-normal"
-                if r.battery_level < 20: color_class = "robot-critical"
-                elif r.battery_level < 50: color_class = "robot-warning"
-                
-                if r.status == "MAINTENANCE":
-                    color_class = "robot-maintenance"
-                    core_icon = "⚠️"
-                elif r.status == "SENSOR_FAILURE":
-                    color_class = "robot-sensor"
-                    core_icon = "👁️"
-                else:
-                    core_icon = "•"
-                
-                content = f'''
-                <div class="robot-core {color_class}" title="ID:{r.id} | BAT:{r.battery_level:.1f}% | STAT:{r.status}">
-                    <div style="font-size:10px;">{core_icon}</div>
-                    <div class="bot-id">{r.id.replace('Robot_', 'R')}</div>
-                </div>'''
-
-            class_str = " ".join(cell_classes)
-            html.append(f"<div class='{class_str}' title='SRC:{x},{y}'>{content}</div>")
-
-    html.append("</div>")
-
-    if env.current_state.active_exceptions:
-        html.append(f'''
-        <div class="exception-alert">
-            <div style="background:#ef4444; width:10px; height:10px; border-radius:50%; box-shadow: 0 0 10px #ef4444; animation: pulse 1s infinite; flex-shrink:0;"></div>
-            <b>DETECTED {len(env.current_state.active_exceptions)} CRITICAL EXCEPTIONS</b>
-        </div>
-        ''')
-    elif env.current_state.time_step > 0:
-        html.append(f'''
-        <div class="nominal-alert">
-            <div style="background:#10b981; width:10px; height:10px; border-radius:50%; box-shadow: 0 0 10px #10b981; flex-shrink:0;"></div>
-            <b>ALL SYSTEMS NOMINAL.</b> OVERSEER AI ACTIVE.
-        </div>
-        ''')
-
-    html.append("</div>")
-    return "\n".join(html)
 
 # ---------------------------------------------------------------------------
-# Simulation Logic
+# API Routes
 # ---------------------------------------------------------------------------
-def format_hacker_terminal(history):
-    lines = "<br>".join(history[-15:]) # Keep only last 15 to prevent huge DOM
-    return f'''
-    <div style="background: #050914; color: #10b981; font-family: 'JetBrains Mono', Courier, monospace; padding: 20px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.2); height: 350px; overflow-y: auto; font-size: 13px; position:relative; box-shadow: inset 0 0 30px rgba(0,0,0,0.8);">
-        <div style="position:absolute; top:0; left:0; right:0; height:100%; background: linear-gradient(transparent 50%, rgba(16,185,129,0.02) 50%); background-size: 100% 4px; pointer-events:none; z-index:1;"></div>
-        <div style="position:relative; z-index:2;">
-            {lines if lines else 'SYSTEM BOOT... OVERSEER AI WAITING FOR UPLINK...'}
-            <span style="animation: blink 1s step-end infinite; color:#38bdf8;">█</span>
-        </div>
-    </div>
-    <style>@keyframes blink {{ 50% {{ opacity: 0; }} }}</style>
-    '''
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "message": "OVERSEER ENGINE ONLINE"}
 
-def run_simulation(scenario, max_steps):
+
+@app.post("/api/reset")
+def reset_endpoint():
+    return {"status": "ok", "message": "Environment reset triggered."}
+
+
+class SimulationRequest(BaseModel):
+    scenario: str = "medium"
+    max_steps: int = 20
+
+
+@app.get("/api/scenario/{name}")
+def get_scenario_grid(name: str):
+    root = Path(__file__).parent
+    try:
+        env = WarehouseEnvironment(
+            map_path=str(root / "configs" / "warehouse_map.json"),
+            scenario_path=str(root / "configs" / "scenarios.yaml"),
+            scenario_name=name,
+        )
+        state = env.reset()
+        grid_state = {
+            'grid_size': env.map_config.get('dimensions', [10, 10]),
+            'robots': [{"id": r["id"], "location": list(r["location"]) if r.get("location") else None, "status": r.get("status"), "battery": r.get("battery_level", 100)} for r in state.get("robots", [])],
+            'obstacles': [list(bp["location"]) for bp in state.get("blocked_paths", [])],
+            'stations': [{"location": s} for s in env.map_config.get('charging_stations', [])]
+        }
+        return {"grid_state": grid_state}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+@app.post("/api/simulate")
+def run_simulation_api(req: SimulationRequest):
+    """Run a full simulation and return results (non-streaming for simplicity)."""
     client = _get_llm_client()
-    env = WarehouseEnvironment(scenario_key=scenario)
+    root = Path(__file__).parent
+    env = WarehouseEnvironment(
+        map_path=str(root / "configs" / "warehouse_map.json"),
+        scenario_path=str(root / "configs" / "scenarios.yaml"),
+        scenario_name=req.scenario,
+    )
     state = env.reset()
-    
+
     total_reward = 0.0
     total_actions = 0
     successful_actions = 0
     failed_action_memory = []
-    
     action_history = []
     plot_data = []
-    
-    # Extract heuristic flag directly for now (keeping original logic intact)
-    use_heuristic = False
-    
-    # Initialize the plot layout dynamically
-    yield (
-        render_warehouse_grid(env),
-        pd.DataFrame(columns=["Step", "Total Reward"]),
-        format_hacker_terminal([]),
-        "<div style='color:#64748b; font-family: Outfit, sans-serif;'>Initializing Simulation Engine...</div>"
-    )
+    use_heuristic = client is None
 
-    for step in range(1, max_steps + 1):
+    for step in range(1, req.max_steps + 1):
         state_text = _format_state_for_prompt(env.current_state)
         exceptions_before = len(env.current_state.active_exceptions)
-        resolved_count = 0
-        
+
         recent_history_str = "None"
         if action_history:
-            # We strip html to leave bare text for LLM
-            clean_history = [re.sub(r'<[^>]+>', '', idx) for idx in action_history[-3:]]
+            clean_history = [re.sub(r'<[^>]+>', '', entry) for entry in action_history[-3:]]
             recent_history_str = json.dumps(clean_history)
-            
+
         failed_actions_str = "None"
         if failed_action_memory:
             failed_actions_str = json.dumps(list(set(failed_action_memory[-5:])))
-            
-        mode_label = "<span style='color:#f59e0b;'>Heuristic Engine</span>" if use_heuristic else "<span style='color:#8b5cf6;'>LLM Chain-of-Thought Core</span>"
-        
-        # Intermediate yield 
-        kpi_md = f'''<div style='color:#e2e8f0; font-family: Outfit, sans-serif;'>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #1e293b;'>
-            <b style='color:#94a3b8;'>STATUS</b><span style='color:#38bdf8; font-weight:800;'>COMPUTING...</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>STEP</b><span style='color:#cbd5e1;'>{step} / {max_steps}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>MODE</b><span>{mode_label}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>NET REWARD</b><span style='color:#10b981; font-weight:800; text-shadow:0 0 8px rgba(16,185,129,0.5);'>{total_reward:.2f}</span>
-        </div>
-        </div>'''
-        
-        yield (
-            render_warehouse_grid(env),
-            pd.DataFrame(plot_data) if plot_data else pd.DataFrame(columns=["Step", "Total Reward"]),
-            format_hacker_terminal(action_history),
-            kpi_md
-        )
-        
+
         error_logs = []
         if use_heuristic:
-            action = _heuristic_action(env, scenario)
+            action = _heuristic_action(env, req.scenario)
         else:
             prompt = _build_prompt(state_text, recent_history_str, failed_actions_str)
             action, error_logs = _call_llm_for_action(client, prompt)
-            
+
         _, reward, terminated, info = env.step(action)
-            
+
         total_reward += reward
         total_actions += 1
         action_key = f"{action.get('command_type')}:{action.get('target_id')}"
@@ -566,203 +337,157 @@ def run_simulation(scenario, max_steps):
             failed_action_memory.append(action_key)
         if reward > 0.0:
             successful_actions += 1
-            
+
         logs = info.get("event_log", ["Agent waited."])
         if error_logs:
             logs = error_logs + logs
         exceptions_after = len(env.current_state.active_exceptions)
-        if exceptions_after < exceptions_before:
-            resolved_count += (exceptions_before - exceptions_after)
-            
-        log_entry = (
-            f"<span style='color:#38bdf8'>[T:{step:02d}]</span> "
-            f"<span style='color:#cbd5e1'>OP:</span> <span style='color:#ec4899; font-weight:bold;'>{action['command_type']}</span> "
-            f"<span style='color:#cbd5e1'>TGT:</span> <span style='color:#eab308'>{action.get('target_id','N/A')}</span> "
-            f"<span style='color:#cbd5e1'>V:</span> <span style='color:#10b981'>+{reward:.2f}</span><br>"
-            f"&nbsp;&nbsp;<span style='color:#64748b'>↳ {'; '.join(logs)}</span>"
-        )
+
+        log_entry = f"[T:{step:02d}] OP:{action['command_type']} TGT:{action.get('target_id','N/A')} V:+{reward:.2f} | {'; '.join(logs)}"
         action_history.append(log_entry)
-        
-        plot_data.append({"Step": step, "Total Reward": total_reward})
-        
-        status_text = "<span style='color:#10b981; font-weight:800; text-shadow:0 0 10px rgba(16,185,129,0.5);'>MISSION COMPLETE</span>" if (total_reward > 0 and exceptions_after == 0) else ("<span style='color:#ef4444; font-weight:800; text-shadow:0 0 10px rgba(239,68,68,0.5);'>MISSION WARNING</span>" if terminated else "<span style='color:#38bdf8;'>IN PROGRESS</span>")
-        kpi_md = f'''<div style='color:#e2e8f0; font-family: Outfit, sans-serif;'>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #1e293b;'>
-            <b style='color:#94a3b8;'>STATUS</b><span>{status_text}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>STEP</b><span style='color:#cbd5e1;'>{step} / {max_steps}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>MODE</b><span>{mode_label}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>NET REWARD</b><span style='color:#10b981; font-weight:800; text-shadow:0 0 8px rgba(16,185,129,0.5);'>{total_reward:.2f}</span>
-        </div>
-        <div style='display:flex; justify-content:space-between; margin-bottom:12px;'>
-            <b style='color:#94a3b8;'>EXCEPTIONS</b><span style='color:#ef4444;'>{exceptions_after}</span>
-        </div>
-        </div>'''
-        
+        plot_data.append({"step": step, "total_reward": round(total_reward, 3)})
+
         if terminated or exceptions_after == 0:
-            yield (
-                render_warehouse_grid(env),
-                pd.DataFrame(plot_data),
-                format_hacker_terminal(action_history),
-                kpi_md
-            )
             break
-            
-        yield (
-            render_warehouse_grid(env),
-            pd.DataFrame(plot_data),
-            format_hacker_terminal(action_history),
-            kpi_md
+
+    action_eff = (successful_actions / total_actions) if total_actions > 0 else 0.0
+    return {
+        "scenario": req.scenario,
+        "total_reward": round(total_reward, 3),
+        "steps_taken": len(plot_data),
+        "action_efficiency": round(action_eff, 3),
+        "exceptions_remaining": len(env.current_state.active_exceptions),
+        "plot_data": plot_data,
+        "action_log": action_history,
+    }
+
+
+@app.post("/api/simulate/stream")
+async def run_simulation_stream_api(req: SimulationRequest):
+    """Run a full simulation and stream results via Server-Sent Events (SSE)."""
+    
+    async def event_generator():
+        client = _get_llm_client()
+        root = Path(__file__).parent
+        env = WarehouseEnvironment(
+            map_path=str(root / "configs" / "warehouse_map.json"),
+            scenario_path=str(root / "configs" / "scenarios.yaml"),
+            scenario_name=req.scenario,
         )
-        time.sleep(0.5)
+        state = env.reset()
+
+        total_reward = 0.0
+        total_actions = 0
+        successful_actions = 0
+        failed_action_memory = []
+        action_history = []
+        plot_data = []
+        use_heuristic = client is None
+
+        for step in range(1, req.max_steps + 1):
+            state_text = _format_state_for_prompt(env.current_state)
+            exceptions_before = len(env.current_state.active_exceptions)
+
+            recent_history_str = "None"
+            if action_history:
+                clean_history = [re.sub(r'<[^>]+>', '', entry) for entry in action_history[-3:]]
+                recent_history_str = json.dumps(clean_history)
+
+            failed_actions_str = "None"
+            if failed_action_memory:
+                failed_actions_str = json.dumps(list(set(failed_action_memory[-5:])))
+
+            error_logs = []
+            if use_heuristic:
+                action = _heuristic_action(env, req.scenario)
+            else:
+                prompt = _build_prompt(state_text, recent_history_str, failed_actions_str)
+                action, error_logs = _call_llm_for_action(client, prompt)
+
+            _, reward, terminated, info = env.step(action)
+
+            total_reward += reward
+            total_actions += 1
+            action_key = f"{action.get('command_type')}:{action.get('target_id')}"
+            if reward <= 0.0 and action.get("command_type") != "WAIT":
+                failed_action_memory.append(action_key)
+            if reward > 0.0:
+                successful_actions += 1
+
+            logs = info.get("event_log", ["Agent waited."])
+            if error_logs:
+                logs = error_logs + logs
+            exceptions_after = len(env.current_state.active_exceptions)
+
+            log_entry = f"[T:{step:02d}] OP:{action['command_type']} TGT:{action.get('target_id','N/A')} V:+{reward:.2f} | {'; '.join(logs)}"
+            action_history.append(log_entry)
+            plot_data.append({"step": step, "total_reward": round(total_reward, 3)})
+
+            action_eff = (successful_actions / total_actions) if total_actions > 0 else 0.0
+            metrics = {"total_reward": round(total_reward, 3), "action_efficiency": round(action_eff, 3)}
+            
+            # Serialize state for React Native Grid
+            grid_state = {
+                'grid_size': env.map_config.get('dimensions', [10, 10]),
+                'robots': [{"id": r.id, "location": list(r.location) if r.location else None, "status": r.status.value if hasattr(r.status, 'value') else r.status, "battery": r.battery_level} for r in env.current_state.robots],
+                'obstacles': [list(bp.location) for bp in env.current_state.blocked_paths],
+                'stations': [{"location": s} for s in env.map_config.get('charging_stations', [])]
+            }
+
+            update_data = {
+                "step": step,
+                "scenario": req.scenario,
+                "total_reward": round(total_reward, 3),
+                "action_efficiency": round(action_eff, 3),
+                "exceptions_remaining": exceptions_after,
+                "active_exceptions": [{"id": e.id, "type": e.type.value if hasattr(e.type, 'value') else e.type, "severity": e.severity, "location": getattr(e, 'location', None)} for e in env.current_state.active_exceptions],
+                "plot_data": plot_data,
+                "action_log": action_history,
+                "grid_state": grid_state,
+                "terminated": terminated or exceptions_after == 0
+            }
+
+            yield f"data: {json.dumps(update_data)}\n\n"
+            await asyncio.sleep(0.5)
+
+            if update_data["terminated"]:
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+
 
 # ---------------------------------------------------------------------------
-# Gradio Premium UI Shell
+# Static Files — serve the React SPA build from dist/
 # ---------------------------------------------------------------------------
-custom_css = '''
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
+DIST_DIR = Path(__file__).parent / "dist"
 
-body { background-color: #030712 !important; }
-.gradio-container { background-color: #030712 !important; max-width: 1400px !important; margin: auto !important; font-family: 'Outfit', sans-serif !important; }
+if DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
 
-/* Dashboard Wrapper Styles */
-.sidebar-panel { 
-    background: #0b1120 !important; 
-    border-radius: 16px !important; 
-    border: 1px solid rgba(56, 189, 248, 0.1) !important; 
-    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5) !important;
-    padding: 24px !important; 
-}
-.stage-panel { 
-    background: #0b1120 !important; 
-    border-radius: 16px !important; 
-    border: 1px solid rgba(56, 189, 248, 0.1) !important; 
-    padding: 24px !important; 
-}
-.terminal-panel { 
-    background: transparent !important; 
-    border: none !important; 
-    padding: 0 !important; 
-    box-shadow: none !important; 
-    margin-top: 20px !important;
-}
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve index.html for all non-API routes (SPA client-side routing)."""
+        file_path = DIST_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(DIST_DIR / "index.html"), headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        })
+else:
+    @app.get("/")
+    def no_build():
+        return JSONResponse(
+            {"error": "Frontend not built. Run 'npm run build' first."},
+            status_code=503,
+        )
 
-/* Control Element Overrides */
-.gr-button-primary {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-    border: none !important;
-    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3) !important;
-    transition: all 0.3s ease !important;
-    font-weight: 800 !important;
-    letter-spacing: 1px !important;
-    border-radius: 8px !important;
-}
-.gr-button-primary:hover {
-    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5) !important;
-    transform: translateY(-2px) !important;
-}
-.gr-input, .gr-box, .gr-dropdown {
-    background-color: #0f172a !important;
-    border: 1px solid #1e293b !important;
-    color: #e2e8f0 !important;
-    border-radius: 8px !important;
-}
-.gr-input:focus {
-    border-color: #38bdf8 !important;
-    box-shadow: 0 0 0 1px #38bdf8 !important;
-}
 
-/* Typography Overrides */
-h1, h2, h3, h4, p, span {
-    font-family: 'Outfit', sans-serif !important;
-}
-'''
-
-# Define Custom Theme using Gradio Theme Builder
-premium_theme = gr.themes.Base(
-    primary_hue="emerald",
-    neutral_hue="slate",
-    spacing_size="sm",
-    radius_size="lg",
-    font=[gr.themes.GoogleFont("Outfit"), "sans-serif"]
-).set(
-    body_background_fill="#030712",
-    body_text_color="#f8fafc",
-    background_fill_primary="#0b1120",
-    background_fill_secondary="#030712",
-    border_color_primary="rgba(56, 189, 248, 0.1)",
-    block_background_fill="#0b1120",
-    block_border_width="1px",
-    block_border_color="rgba(56, 189, 248, 0.1)",
-    block_radius="16px",
-    button_primary_background_fill="linear-gradient(135deg, #10b981, #059669)",
-    button_primary_background_fill_hover="linear-gradient(135deg, #34d399, #10b981)",
-    button_primary_text_color="#ffffff",
-    panel_background_fill="#0b1120"
-)
-
-with gr.Blocks(theme=premium_theme, css=custom_css, title="EcoNav Premium AI") as demo:
-    with gr.Row():
-        # LEFT SIDEBAR
-        with gr.Column(scale=1, elem_classes=["sidebar-panel"]):
-            gr.Markdown("<h2 style='color:#f8fafc; margin-top:0; font-weight:800; letter-spacing:1px;'><span style='color:#10b981;'>OVERSEER</span> ENGINE</h2>")
-            gr.Markdown("<p style='color:#94a3b8; font-size:13px; font-family: Outfit;'>Neural Logistics Optimization Dashboard</p>")
-            gr.HTML("<div style='height:1px; background:linear-gradient(90deg, #10b981, transparent); margin:20px 0;'></div>")
-            
-            scenario = gr.Dropdown(choices=["easy", "medium", "hard"], value="medium", label="Simulation Matrix")
-            steps = gr.Slider(minimum=5, maximum=50, value=20, step=1, label="Epoch Constraints")
-            start_btn = gr.Button("INITIALIZE UPLINK", variant="primary")
-            
-            gr.HTML("<div style='height:1px; background:linear-gradient(90deg, transparent, #38bdf8, transparent); margin:20px 0;'></div>")
-            gr.Markdown("<h3 style='color:#e2e8f0; font-weight:600; letter-spacing:1px;'>TELEMETRY</h3>")
-            kpi_html = gr.HTML(
-                "<div style='color:#64748b; font-family: Outfit, sans-serif; font-size:14px;'>"
-                "<div style='margin-bottom:12px; display:flex; justify-content:space-between;'><b>STATUS</b><span style='color:#10b981;'>SYSTEM READY</span></div>"
-                "<div style='margin-bottom:12px; display:flex; justify-content:space-between;'><b>STEP</b><span>0</span></div>"
-                "<div style='margin-bottom:12px; display:flex; justify-content:space-between;'><b>REWARD</b><span>0.00</span></div>"
-                "</div>"
-            )
-
-        # MAIN STAGE
-        with gr.Column(scale=3):
-            # TOP ROW: Grid & LinePlot
-            with gr.Row():
-                with gr.Column(scale=1, elem_classes=["stage-panel"]):
-                    grid = gr.HTML("<div style='color:#38bdf8; font-family: JetBrains Mono; text-align:center; padding:100px 0; border: 1px dashed #1e293b; border-radius:12px;'>WAITING FOR ENVIRONMENT SYNC...</div>")
-                
-                with gr.Column(scale=1, elem_classes=["stage-panel"]):
-                    gr.Markdown("<h3 style='color:#e2e8f0; margin-top:0; font-weight:800; letter-spacing:1px;'>REWARD TRAJECTORY</h3>")
-                    plot = gr.LinePlot(
-                        x="Step", 
-                        y="Total Reward", 
-                        title="Cumulative Return vs Epochs",
-                        tooltip=["Step", "Total Reward"],
-                    )
-                    
-            # BOTTOM ROW: Terminal Log
-            with gr.Row():
-                with gr.Column(scale=1, elem_classes=["terminal-panel"]):
-                    gr.Markdown("<h3 style='color:#e2e8f0; margin-bottom:5px; font-weight:800; letter-spacing:1px;'>SYSTEM CONSOLE</h3>")
-                    terminal_log = gr.HTML(
-                        '<div style="background: #050914; color: #10b981; font-family: \\\'JetBrains Mono\\\', Courier, monospace; padding: 20px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.2); height: 350px; overflow-y: auto; font-size: 13px; position:relative; box-shadow: inset 0 0 30px rgba(0,0,0,0.8);">'
-                        '<div style="position:absolute; top:0; left:0; right:0; height:100%; background: linear-gradient(transparent 50%, rgba(16,185,129,0.02) 50%); background-size: 100% 4px; pointer-events:none; z-index:1;"></div>'
-                        '<div style="position:relative; z-index:2;">Awaiting user command...<span style="animation: blink 1s step-end infinite; color:#38bdf8;">█</span></div>'
-                        '</div><style>@keyframes blink { 50% { opacity: 0; } }</style>'
-                    )
-
-    # Wire up the button
-    start_btn.click(
-        run_simulation, 
-        inputs=[scenario, steps], 
-        outputs=[grid, plot, terminal_log, kpi_html]
-    )
-
+# ---------------------------------------------------------------------------
+# Entry Point
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    app_api = FastAPI()
-    app = gr.mount_gradio_app(app_api, demo, path="/")
     uvicorn.run(app, host="0.0.0.0", port=7860)

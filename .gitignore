@@ -24,3 +24,6 @@ Thumbs.db
 
 # Meta-provided validator script (local dev tool, not part of submission)
 validate-submission.sh
+node_modules
+dist/
+*.tsbuildinfo

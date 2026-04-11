@@ -62,7 +62,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The interactive Gradio UI starts at `http://localhost:7860`.
+The interactive React Dashboard starts at `http://localhost:7860`.
 
 ## Running Inference (Hackathon Evaluation)
 
@@ -136,7 +136,9 @@ warehouse-logistics-v1/
 ├── README.md               # This file
 ├── openenv.yaml            # OpenEnv manifest
 ├── Dockerfile              # Container image definition
-├── app.py                  # Gradio UI + FastAPI /reset endpoint
+├── app.py                  # FastAPI Server + Telemetry Stream
+├── app/                    # React Frontend Source (Dashboard)
+├── dist/                   # Built production bundle (ignored by git)
 ├── inference.py            # Hackathon evaluation script
 ├── environment.py          # Core RL environment logic
 ├── models.py               # Pydantic schemas (Action & Observation)
