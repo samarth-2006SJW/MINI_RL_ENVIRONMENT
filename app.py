@@ -256,44 +256,164 @@ def _heuristic_action(env: WarehouseEnvironment, scenario: str) -> dict:
 # ---------------------------------------------------------------------------
 # Visual Renderer
 # ---------------------------------------------------------------------------
-def render_warehouse_grid(env: WarehouseEnvironment):
-    """Converts the environment state into a visual Markdown grid."""
+def render_warehouse_grid(env: WarehouseEnvironment) -> str:
+    """Converts the environment state into a highly polished HTML/CSS visual grid."""
     dims = env.map_config.get("dimensions", [10, 10])
     width, height = dims[0], dims[1]
     
-    # Initialize grid with empty floor
-    grid = [["⬜" for _ in range(width)] for _ in range(height)]
-    
-    # Add charging stations
-    for station in env.map_config.get("charging_stations", []):
-        grid[station[1]][station[0]] = "🔌"
-        
-    # Add blockages
-    for block in env.current_state.blocked_paths:
-        grid[block.location[1]][block.location[0]] = "🚧"
-        
-    # Add exceptions (Orders/Packages)
-    for ex in env.current_state.active_exceptions:
-        # If the exception is a shortage, we don't have a location, but if it's a breakdown, the robot is the location.
-        pass
+    robots_map = {tuple(r.location): r for r in env.current_state.robots if r.location}
+    stations_set = {tuple(loc) for loc in env.map_config.get("charging_stations", [])}
+    blocked_set = {tuple(b.location) for b in env.current_state.blocked_paths}
 
-    # Add robots
-    for robot in env.current_state.robots:
-        if robot.location:
-            icon = "🤖"
-            if robot.status == "MAINTENANCE": icon = "🛠️"
-            elif robot.status == "SENSOR_FAILURE": icon = "❓"
-            grid[robot.location[1]][robot.location[0]] = icon
+    html = []
+    html.append(f'''
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+      
+      .warehouse-wrapper {{
+         font-family: 'Inter', sans-serif;
+         background: #0f172a;
+         padding: 24px;
+         border-radius: 16px;
+         border: 1px solid #1e293b;
+         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+         width: fit-content;
+         margin: 0 auto;
+      }}
+      .warehouse-grid {{
+         display: grid;
+         grid-template-columns: repeat({width}, 1fr);
+         gap: 6px;
+         background: #1e293b; 
+         padding: 12px;
+         border-radius: 12px;
+         border: 1px solid #334155;
+      }}
+      .grid-cell {{
+         width: 48px;
+         height: 48px;
+         background: #0f172a;
+         border-radius: 8px;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         font-size: 24px;
+         border: 1px solid #1e293b;
+         transition: all 0.2s ease;
+         position: relative;
+      }}
+      .grid-cell:hover {{
+         transform: scale(1.05);
+         border-color: #475569;
+         z-index: 10;
+      }}
+      .cell-station {{
+         background: rgba(56, 189, 248, 0.1);
+         border-color: rgba(56, 189, 248, 0.4);
+         box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.15);
+      }}
+      .cell-blocked {{
+         background: repeating-linear-gradient(
+            45deg,
+            #451a03,
+            #451a03 10px,
+            #78350f 10px,
+            #78350f 20px
+         );
+         border-color: #b45309;
+      }}
+      .robot {{
+         filter: drop-shadow(0 0 6px rgba(255,255,255,0.4));
+      }}
+      .robot-maintenance {{
+         filter: drop-shadow(0 0 10px #ef4444);
+         animation: pulse-red 1.5s infinite;
+      }}
+      .robot-sensor {{
+         filter: drop-shadow(0 0 10px #eab308);
+         animation: pulse-yellow 2s infinite;
+      }}
+      .battery-bar {{
+         position: absolute;
+         bottom: 2px;
+         left: 4px;
+         right: 4px;
+         height: 4px;
+         background: rgba(0,0,0,0.5);
+         border-radius: 2px;
+         overflow: hidden;
+         border: 1px solid #000;
+      }}
+      .battery-fill {{
+         height: 100%;
+      }}
+      @keyframes pulse-red {{
+         0% {{ opacity: 1; transform: scale(1); }}
+         50% {{ opacity: 0.6; transform: scale(0.9); }}
+         100% {{ opacity: 1; transform: scale(1); }}
+      }}
+      @keyframes pulse-yellow {{
+         0% {{ opacity: 1; }}
+         50% {{ opacity: 0.5; }}
+         100% {{ opacity: 1; }}
+      }}
+    </style>
+    <div class="warehouse-wrapper">
+    <div style="color:#e2e8f0; font-size: 14px; font-weight:600; margin-bottom:12px; letter-spacing:1px; display:flex; justify-content:space-between;">
+        <span>WAREHOUSE LIVE VIEW ({width}x{height})</span>
+    </div>
+    <div class="warehouse-grid">
+    '''
+    )
 
-    # Build Markdown table
-    header = "| " + " | ".join([str(i) for i in range(width)]) + " |"
-    divider = "| " + " | ".join(["---" for _ in range(width)]) + " |"
-    rows = []
     for y in range(height):
-        rows.append(f"| " + " | ".join(grid[y]) + f" |")
-        
-    return f"### Warehouse Live View (10x10)\n\n" + "\n".join([header, divider] + rows)
+        for x in range(width):
+            loc = (x, y)
+            cell_classes = ["grid-cell"]
+            icon = ""
+            battery_html = ""
+            
+            if loc in blocked_set:
+                cell_classes.append("cell-blocked")
+                icon = "🚧"
+            elif loc in stations_set:
+                cell_classes.append("cell-station")
+                icon = "⚡"
+            
+            r = robots_map.get(loc)
+            if r:
+                batt_color = "#22c55e" if r.battery_level > 50 else ("#eab308" if r.battery_level > 20 else "#ef4444")
+                battery_html = f'''<div class="battery-bar"><div class="battery-fill" style="width: {r.battery_level}%; background: {batt_color};"></div></div>'''
+                
+                if r.status == "MAINTENANCE":
+                    icon = f"<div class='robot-maintenance' title='{r.id}: {r.status}'>🚨</div>"
+                elif r.status == "SENSOR_FAILURE":
+                    icon = f"<div class='robot-sensor' title='{r.id}: {r.status}'>❓</div>"
+                else:
+                    icon = f"<div class='robot' title='{r.id}: {r.battery_level:.1f}% Battery'>🤖</div>"
 
+            class_str = " ".join(cell_classes)
+            html.append(f"<div class='{class_str}' title='{x},{y}'>{icon}{battery_html}</div>")
+
+    html.append("</div>")
+
+    if env.current_state.active_exceptions:
+        html.append(f'''
+        <div style="margin-top: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 12px; color: #fca5a5; font-size: 13px; display: flex; align-items:center; gap: 8px;">
+            <div style="background:#ef4444; width:8px; height:8px; border-radius:50%; animation: pulse-red 1.5s infinite; flex-shrink:0;"></div>
+            <b>{len(env.current_state.active_exceptions)} Active Exception(s)</b> requiring REROUTE, RESTOCK, or MAINTENANCE.
+        </div>
+        ''')
+    elif env.current_state.time_step > 0:
+        html.append(f'''
+        <div style="margin-top: 16px; background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; border-radius: 8px; padding: 12px; color: #86efac; font-size: 13px; display: flex; align-items:center; gap: 8px;">
+            <div style="background:#22c55e; width:8px; height:8px; border-radius:50%;"></div>
+            <b>All Systems Nominal.</b> Zero Active Exceptions.
+        </div>
+        ''')
+
+    html.append("</div>")
+    return "\n".join(html)
 # ---------------------------------------------------------------------------
 # Simulation Logic
 # ---------------------------------------------------------------------------
@@ -421,7 +541,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) 
             
         with gr.Column(scale=2):
             status = gr.Markdown("### Status: Ready")
-            grid = gr.Markdown("### Grid will appear here...")
+            grid = gr.HTML("<div style='color:#94a3b8; padding: 20px; font-family: sans-serif;'>Grid will appear here...</div>")
             kpi = gr.Markdown("### Live KPIs\n- Waiting for simulation start")
             summary = gr.Markdown("### Scenario Summary\n- Select a scenario and start simulation")
             
