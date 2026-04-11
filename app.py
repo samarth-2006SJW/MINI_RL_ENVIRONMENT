@@ -578,10 +578,7 @@ with gr.Blocks(theme=gr.themes.Base(), css=custom_css) as demo:
                         x="Step", 
                         y="Total Reward", 
                         title="Cumulative Reward vs Time",
-                        width=400, 
-                        height=250, 
-                        tooltip=["Step", "Total Reward"],
-                        color_discrete_sequence=["#38bdf8"]
+                        tooltip=["Step", "Total Reward"]
                     )
                     
             # BOTTOM ROW: Terminal Log
