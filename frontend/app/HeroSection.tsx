@@ -38,10 +38,6 @@ const HeroSection = ({ onRunEpisode }: HeroSectionProps) => {
             <Play className="w-4 h-4" />
             Run Episode
           </Button>
-          <Button variant="outline" className="border-border text-foreground hover:bg-secondary px-6 py-5 rounded-xl font-heading font-semibold text-sm gap-2">
-            <Cpu className="w-4 h-4" />
-            Inference Mode
-          </Button>
         </div>
       </div>
     </section>
