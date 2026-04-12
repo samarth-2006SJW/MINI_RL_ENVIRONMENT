@@ -1,157 +1,146 @@
 ---
-title: Warehouse Logistics RL Environment
+title: Logistics Exception Handler
 emoji: 🏭
 colorFrom: blue
 colorTo: indigo
 sdk: docker
-app_file: backend/api/app.py
-pinned: false
-tags:
-  - openenv
-  - reinforcement-learning
-  - logistics
+app_port: 7860
+pinned: true
 ---
 
-# Warehouse Logistics Exception Handler
+[![OpenEnv Compliant](https://img.shields.io/badge/OpenEnv-Compliant-10b981)](https://github.com/OpenEnv/spec)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An [OpenEnv](https://github.com/meta-pytorch/OpenEnv) environment that simulates a dynamic warehouse control system. An AI agent acts as the **Central Dispatcher**, resolving cascading logistics failures — robot breakdowns, inventory shortages, and shipment delays — across three escalating difficulty levels.
+**Automated Logistics Exception Handler** is an **intelligent logistics platform** and Reinforcement Learning (RL) environment built for the **Meta AI PyTorch OpenEnv Hackathon**. It empowers foundation models and autonomous agents to manage complex warehouse logistics, resolving cascading failures like robot hardware faults, inventory shortages, and blocked pathways in real-time.
 
-## 🏗️ Project Architecture
+---
 
-Our project follows a modern, modular architecture that cleanly separates the RL logic, API layer, and React frontend.
+By integrating an interactive visual dashboard with a dynamic physics-based backend, the platform provides a rigorous testing ground for logistics agents acting as the Central Dispatcher over automated warehouse robotics.
 
-```bash
+- **Dynamic Exception Engine**: Procedurally generates logistics failures (e.g. `ROBOT_BATTERY_LOW`, `PATH_BLOCKED`, `ORDER_DELAYED`).
+- **Chain-of-Thought Ready**: Native integration with large language models generating step-by-step reasoning logs.
+- **Interactive UI**: A rich Vite/React dashboard with midnight-indigo glassmorphism design, rendering the environment in real time.
+- **OpenEnv Compliance**: Fully compatible with the OpenEnv specification for zero-shot RL evaluation.
+
+---
+
+## 🛠 Tech Stack
+The project is architected as a modern **monorepo** for seamless development and deployment.
+
+- **Backend**: Python 3.10+, FastAPI, Uvicorn, Python dataclasses.
+- **Frontend**: React, Vite, TailwindCSS (Midnight Indigo Glassmorphism), Lucide Icons.
+- **Infrastructure**: Docker multi-stage builds.
+- **Agent Integration**: Hugging Face Hub, OpenAI-compatible APIs, `openenv-core`.
+
+---
+
+## 📂 Repository Structure
+```text
 MINI_RL_ENVIRONMENT/
-├── backend/                  # Python Domain
+├── backend/                  # Python Domain (FastAPI server, RL logic)
 │   ├── api/                  # FastAPI Application Layer
-│   │   └── app.py            # Main Dashboard API (Serves Frontend)
-│   ├── core/                 # Environment & Reinforcement Learning Logic
-│   │   ├── environment.py    # Main OpenEnv Gym-style Interface
-│   │   ├── models.py         # Pydantic state/observation schemas
-│   │   ├── tasks.py          # RL Evaluation logic (easy/medium/hard)
-│   │   └── utils.py          # Collision math and utility logic
-│   ├── configs/              # Scenarios & OpenEnv Configurations
-│   └── inference.py          # Hackathon validation baseline script
+│   ├── core/                 # Environment & Reinforcement Learning Logic (OpenEnv Spec)
+│   ├── configs/              # Configurations & Schema references
+│   └── inference.py          # Baseline agent evaluation script (Compliance optimized)
 ├── frontend/                 # React UI Domain
 │   ├── src/                  # React component sources
-│   ├── app/                  # Application routing & hooks
-│   ├── package.json          # Node dependencies
-│   └── vite.config.ts        # Vite configuration
-├── scripts/                  
-│   └── validate-submission.sh# The OpenEnv validation script
-├── Dockerfile                # Multi-stage optimized Docker build
-├── openenv.yaml              # OpenEnv Hackathon Manifest
-└── pyproject.toml            # Strict Python metadata
+│   ├── app/                  # Application routing & visuals
+│   └── package.json          # Node dependencies
+├── server/                   # Production validator shims
+├── scripts/                  # Bash scripts for OpenEnv validation
+├── Dockerfile                # Docker image optimized for deployment
+└── openenv.yaml              # OpenEnv Hackathon Manifest
 ```
 
 ---
 
-## 🚀 Getting Started (Development Setup)
+### Prerequisites
+- **Node.js**: >= 18.0.0
+- **Python**: >= 3.10
+- **Git**
 
-### 1. Frontend Setup (React & Vite)
-To work on the UI Dashboard or compile the production web package:
-```bash
-cd frontend
-npm install
+### Quick Start (Recommended)
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/samarth-2006SJW/MINI_RL_ENVIRONMENT.git
+   cd MINI_RL_ENVIRONMENT
+   ```
 
-# Option A: Run Vite Developer Server (Hot Reloading)
-npm run dev
+2. **Install Dependencies**:
+   ```bash
+   # Install and build React frontend dependencies
+   cd frontend
+   npm install
+   npm run build
+   cd ..
+   
+   # Setup Python backend virtual environment
+   python -m venv .venv
+   
+   # Windows Activation:
+   .venv\Scripts\activate
+   # Linux/Mac Activation:
+   source .venv/bin/activate
+   
+   # Install core dependencies
+   pip install -r requirements.txt
+   ```
 
-# Option B: Build Production Package (For Docker / FastAPI Serving)
-npm run build
-```
-
-### 2. Backend Setup (FastAPI & RL Engine)
-To run the simulation environment locally or test the LLM agent:
-
-```bash
-# Create a virtual environment
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# Linux/Mac
-source .venv/bin/activate
-
-# Install requirements
-pip install -r requirements.txt
-
-# Start the API & Web Dashboard 
-python backend/api/app.py
-```
-> **Note:** Due to internal `sys.path` injection, you can run `python backend/api/app.py` from the root folder without `PYTHONPATH` errors.
+3. **Run Dev Environment**:
+   ```bash
+   python backend/api/app.py
+   ```
+   > The Interactive Dashboard and API will now run locally on [http://localhost:7860](http://localhost:7860).
 
 ---
 
-## 🐳 Running via Docker (Recommended)
+## 🐳 Running via Docker (Production)
 
-To run the entire experience strictly as it will run on the Hugging Face deployed space, utilize the unified Dockerfile.
+You can run the environment identically to how it corresponds to the Hugging Face Spaces environment execution flow by utilizing the unified Docker build:
 
 ```bash
+# Build the Docker image
 docker build -t warehouse-rl:latest .
+
+# Run the container
 docker run --rm -p 7860:7860 \
-  -e HF_TOKEN=your_api_key \
-  -e API_BASE_URL=https://api.openai.com/v1 \
-  -e MODEL_NAME=gpt-4o-mini \
+  -e HF_TOKEN="your_huggingface_token" \
+  -e API_BASE_URL="https://api.openai.com/v1" \
+  -e MODEL_NAME="gpt-4o-mini" \
   warehouse-rl:latest
 ```
 
-The interactive React Dashboard will be available at `http://localhost:7860`.
-
 ---
 
-## 🏆 Hackathon Evaluation (OpenEnv Validator)
+## 🧠 RL Evaluation (OpenEnv Compliance)
 
-The hackathon uses `backend/inference.py` directly and expects structured `[STEP]` logs to parse task performance.
+The environment supports three escalating evaluation tasks evaluated natively by the `openenv-core` schema logic:
 
-**Required Environment Variables:**
-| Variable | Description |
-|---|---|
-| `HF_TOKEN` | Your LLM provider API key |
-| `API_BASE_URL` | LLM API endpoint (e.g., `https://api.openai.com/v1`) |
-| `MODEL_NAME` | Model identifier (e.g., `gpt-4o-mini`) |
+1. `easy_warehouse`: Base inventory logistics.
+2. `medium_warehouse`: Escalated robot failures and path blocking.
+3. `hard_warehouse`: Maximize multi-modal exception resolution and throughput.
+
+**Running Baseline Evaluation**:
+The `inference.py` script triggers the standard evaluation loop for OpenEnv validation, providing native structured logs out of the box in the `[START]`, `[STEP]`, and `[END]` formats:
 
 ```bash
-# Test the agent sequentially through all 3 difficulties
-export HF_TOKEN="your_key"
+export HF_TOKEN="your_huggingface_token"
 export API_BASE_URL="https://api.openai.com/v1"
+export MODEL_NAME="gpt-4o-mini"
 python backend/inference.py
 ```
 
-### Final Submission Validation Loop
+---
 
-To double check that your Hugging Face Space passes the strict Meta evaluator, use the provided Bash validation script provided in `scripts/`:
-
-```bash
-# Requires Docker & openenv-core to be installed
-./scripts/validate-submission.sh https://your-hf-space-url.hf.space .
-```
+## 🏆 Project Status
+| Check | Status |
+|---|---|
+| **OpenEnv Validate Tool** | Passing (`[OK] Ready`) ✅ |
+| **OpenEnv Spec** | Compliant (v0.1.0) 🟢 |
+| **Docker Build Pipeline** | Successful 🐳 |
+| **Hugging Face Deployment** | Live 🚀 |
 
 ---
 
-## 🧠 Core Interfaces
-
-### Action Space (`LogisticsCommand`)
-| Field | Type | Description |
-|---|---|---|
-| `command_type` | `str` | `MOVE_ROBOT`, `REROUTE_ORDER`, `DISPATCH_MAINTENANCE`, `REQUEST_RESTOCK`, `ASSIGN_WORKER`, `RE_POLL_SENSOR`, `WAIT` |
-| `target_id` | `str \| None` | ID of the robot, exception, or order to act on |
-| `parameters` | `dict` | Optional params (e.g. `{"target_location": [3, 4]}`) |
-
-### Observation Space (`WarehouseState`)
-| Field | Type | Description |
-|---|---|---|
-| `time_step` | `int` | Current simulation frame |
-| `worker_availability` | `int` | Available human workers |
-| `inventory_status` | `dict` | Component name → stock level |
-| `robots` | `list` | Active system robots (battery & status) |
-| `blocked_paths` | `list` | Currently inaccessible zones |
-| `active_exceptions` | `list` | Errors in the warehouse requiring intervention |
-
----
-
-## 📊 Reward Logistics
-
-Reward is strictly bounded in `[0.0, 1.0]` per episode using a **progress-delta** method:
-- All exceptions resolved → total episode reward = `1.0`
-- Partial resolving maps incrementally towards reward goals!
+## 📜 License
+Distributed under the **MIT License**.
