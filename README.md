@@ -15,6 +15,8 @@ pinned: true
 
 ---
 
+## 🧠 What It Does
+
 By integrating an interactive visual dashboard with a dynamic physics-based backend, the platform provides a rigorous testing ground for logistics agents acting as the Central Dispatcher over automated warehouse robotics.
 
 - **Dynamic Exception Engine**: Procedurally generates logistics failures (e.g. `ROBOT_BATTERY_LOW`, `PATH_BLOCKED`, `ORDER_DELAYED`).
