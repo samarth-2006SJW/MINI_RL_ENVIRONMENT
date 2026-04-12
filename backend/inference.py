@@ -4,8 +4,13 @@ import time
 from pathlib import Path
 
 import openai
+import sys
 
-from environment import WarehouseEnvironment
+root_dir = str(Path(__file__).resolve().parent.parent)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
+from backend.core.environment import WarehouseEnvironment
 
 # ── Mandatory OpenEnv Hackathon Variables ────────────────────────────────────
 # These are injected by the Meta evaluation backend.

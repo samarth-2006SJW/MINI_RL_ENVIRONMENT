@@ -10,9 +10,9 @@ except ImportError:
     class BaseEnv:
         pass
 
-from models import WarehouseState, Robot, BlockedPath, CommandType, ExceptionIssue, LogisticsCommand, RobotStatus, ExceptionType
-from utils import load_config, check_collision
-import tasks
+from backend.core.models import WarehouseState, Robot, BlockedPath, CommandType, ExceptionIssue, LogisticsCommand, RobotStatus, ExceptionType
+from backend.core.utils import load_config, check_collision
+from backend.core import tasks
 
 
 class WarehouseEnvironment(BaseEnv):

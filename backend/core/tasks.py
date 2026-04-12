@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from models import WarehouseState, RobotStatus
+from backend.core.models import WarehouseState, RobotStatus
 
 def check_easy(state: WarehouseState) -> bool:
     """

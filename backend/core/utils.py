@@ -4,7 +4,7 @@ import os
 from typing import List, Dict, Optional, Tuple, Set
 
 # Local imports from our models contract
-from models import Robot, BlockedPath, ExceptionType
+from backend.core.models import Robot, BlockedPath, ExceptionType
 
 
 def heuristic(a: Tuple[int, int], b: Tuple[int, int]) -> int:

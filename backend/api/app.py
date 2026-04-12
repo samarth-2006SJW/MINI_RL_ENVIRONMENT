@@ -18,9 +18,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import uvicorn
+import sys
 
-from environment import WarehouseEnvironment
-from models import WarehouseState, RobotStatus
+root_dir = str(Path(__file__).resolve().parent.parent.parent)
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
+from backend.core.environment import WarehouseEnvironment
+from backend.core.models import WarehouseState, RobotStatus
 
 # ---------------------------------------------------------------------------
 # FastAPI Application
@@ -271,7 +276,7 @@ class SimulationRequest(BaseModel):
 
 @app.get("/api/scenario/{name}")
 def get_scenario_grid(name: str):
-    root = Path(__file__).parent
+    root = Path(__file__).parent.parent
     try:
         env = WarehouseEnvironment(
             map_path=str(root / "configs" / "warehouse_map.json"),
@@ -293,7 +298,7 @@ def get_scenario_grid(name: str):
 def run_simulation_api(req: SimulationRequest):
     """Run a full simulation and return results (non-streaming for simplicity)."""
     client = _get_llm_client()
-    root = Path(__file__).parent
+    root = Path(__file__).parent.parent
     env = WarehouseEnvironment(
         map_path=str(root / "configs" / "warehouse_map.json"),
         scenario_path=str(root / "configs" / "scenarios.yaml"),
@@ -369,7 +374,7 @@ async def run_simulation_stream_api(req: SimulationRequest):
     
     async def event_generator():
         client = _get_llm_client()
-        root = Path(__file__).parent
+        root = Path(__file__).parent.parent
         env = WarehouseEnvironment(
             map_path=str(root / "configs" / "warehouse_map.json"),
             scenario_path=str(root / "configs" / "scenarios.yaml"),
@@ -462,7 +467,7 @@ async def run_simulation_stream_api(req: SimulationRequest):
 # ---------------------------------------------------------------------------
 # Static Files — serve the React SPA build from dist/
 # ---------------------------------------------------------------------------
-DIST_DIR = Path(__file__).parent / "dist"
+DIST_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 if DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")

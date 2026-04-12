@@ -4,7 +4,7 @@ emoji: 🏭
 colorFrom: blue
 colorTo: indigo
 sdk: docker
-app_file: app.py
+app_file: backend/api/app.py
 pinned: false
 tags:
   - openenv
@@ -16,32 +16,76 @@ tags:
 
 An [OpenEnv](https://github.com/meta-pytorch/OpenEnv) environment that simulates a dynamic warehouse control system. An AI agent acts as the **Central Dispatcher**, resolving cascading logistics failures — robot breakdowns, inventory shortages, and shipment delays — across three escalating difficulty levels.
 
-## Quick Start
+## 🏗️ Project Architecture
 
-```python
-from environment import WarehouseEnvironment
+Our project follows a modern, modular architecture that cleanly separates the RL logic, API layer, and React frontend.
 
-# Create environment (choose: "easy", "medium", "hard")
-env = WarehouseEnvironment(
-    map_path="configs/warehouse_map.json",
-    scenario_path="configs/scenarios.yaml",
-    scenario_name="medium"
-)
-
-# Reset and get initial observation
-obs = env.reset()
-print(f"Active exceptions: {len(obs['active_exceptions'])}")
-
-# Step with an action
-action = {"command_type": "REROUTE_ORDER", "target_id": "EX_002"}
-obs, reward, done, info = env.step(action)
-print(f"Reward: {reward:.4f}  Done: {done}")
-print(f"Events: {info['event_log']}")
+```bash
+MINI_RL_ENVIRONMENT/
+├── backend/                  # Python Domain
+│   ├── api/                  # FastAPI Application Layer
+│   │   └── app.py            # Main Dashboard API (Serves Frontend)
+│   ├── core/                 # Environment & Reinforcement Learning Logic
+│   │   ├── environment.py    # Main OpenEnv Gym-style Interface
+│   │   ├── models.py         # Pydantic state/observation schemas
+│   │   ├── tasks.py          # RL Evaluation logic (easy/medium/hard)
+│   │   └── utils.py          # Collision math and utility logic
+│   ├── configs/              # Scenarios & OpenEnv Configurations
+│   └── inference.py          # Hackathon validation baseline script
+├── frontend/                 # React UI Domain
+│   ├── src/                  # React component sources
+│   ├── app/                  # Application routing & hooks
+│   ├── package.json          # Node dependencies
+│   └── vite.config.ts        # Vite configuration
+├── scripts/                  
+│   └── validate-submission.sh# The OpenEnv validation script
+├── Dockerfile                # Multi-stage optimized Docker build
+├── openenv.yaml              # OpenEnv Hackathon Manifest
+└── pyproject.toml            # Strict Python metadata
 ```
 
-## Server Setup
+---
 
-### Docker (Recommended)
+## 🚀 Getting Started (Development Setup)
+
+### 1. Frontend Setup (React & Vite)
+To work on the UI Dashboard or compile the production web package:
+```bash
+cd frontend
+npm install
+
+# Option A: Run Vite Developer Server (Hot Reloading)
+npm run dev
+
+# Option B: Build Production Package (For Docker / FastAPI Serving)
+npm run build
+```
+
+### 2. Backend Setup (FastAPI & RL Engine)
+To run the simulation environment locally or test the LLM agent:
+
+```bash
+# Create a virtual environment
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+# Linux/Mac
+source .venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
+
+# Start the API & Web Dashboard 
+python backend/api/app.py
+```
+> **Note:** Due to internal `sys.path` injection, you can run `python backend/api/app.py` from the root folder without `PYTHONPATH` errors.
+
+---
+
+## 🐳 Running via Docker (Recommended)
+
+To run the entire experience strictly as it will run on the Hugging Face deployed space, utilize the unified Dockerfile.
 
 ```bash
 docker build -t warehouse-rl:latest .
@@ -52,110 +96,62 @@ docker run --rm -p 7860:7860 \
   warehouse-rl:latest
 ```
 
-### Without Docker
+The interactive React Dashboard will be available at `http://localhost:7860`.
 
-```bash
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# Linux/Mac: source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
+---
 
-The interactive React Dashboard starts at `http://localhost:7860`.
+## 🏆 Hackathon Evaluation (OpenEnv Validator)
 
-## Running Inference (Hackathon Evaluation)
+The hackathon uses `backend/inference.py` directly and expects structured `[STEP]` logs to parse task performance.
 
-The hackathon validator runs `inference.py` directly and checks its structured stdout.
-
-**Required environment variables:**
-
+**Required Environment Variables:**
 | Variable | Description |
 |---|---|
-| `HF_TOKEN` | Your Hugging Face / LLM provider API key |
-| `API_BASE_URL` | LLM endpoint (e.g. `https://api.openai.com/v1`) |
-| `MODEL_NAME` | Model identifier (e.g. `gpt-4o-mini`) |
+| `HF_TOKEN` | Your LLM provider API key |
+| `API_BASE_URL` | LLM API endpoint (e.g., `https://api.openai.com/v1`) |
+| `MODEL_NAME` | Model identifier (e.g., `gpt-4o-mini`) |
 
 ```bash
+# Test the agent sequentially through all 3 difficulties
 export HF_TOKEN="your_key"
 export API_BASE_URL="https://api.openai.com/v1"
-export MODEL_NAME="gpt-4o-mini"
-python inference.py
+python backend/inference.py
 ```
 
-Expected output format:
+### Final Submission Validation Loop
 
+To double check that your Hugging Face Space passes the strict Meta evaluator, use the provided Bash validation script provided in `scripts/`:
+
+```bash
+# Requires Docker & openenv-core to be installed
+./scripts/validate-submission.sh https://your-hf-space-url.hf.space .
 ```
-[START] task=easy env=warehouse-logistics-v1 model=gpt-4o-mini
-[STEP] step=1 action=REROUTE_ORDER reward=1.0000 done=true error=null
-[END] success=true steps=1 score=0.9900
-[START] task=medium ...
-...
-```
 
-## Action Space
+---
 
+## 🧠 Core Interfaces
+
+### Action Space (`LogisticsCommand`)
 | Field | Type | Description |
 |---|---|---|
-| `command_type` | str | One of: `MOVE_ROBOT`, `REROUTE_ORDER`, `DISPATCH_MAINTENANCE`, `REQUEST_RESTOCK`, `ASSIGN_WORKER`, `RE_POLL_SENSOR`, `WAIT` |
-| `target_id` | str \| None | ID of the robot, exception, or order to act on |
-| `parameters` | dict | Optional params (e.g. `{"target_location": [3, 4]}` for `MOVE_ROBOT`, `{"component_name": "component_A"}` for `REQUEST_RESTOCK`) |
+| `command_type` | `str` | `MOVE_ROBOT`, `REROUTE_ORDER`, `DISPATCH_MAINTENANCE`, `REQUEST_RESTOCK`, `ASSIGN_WORKER`, `RE_POLL_SENSOR`, `WAIT` |
+| `target_id` | `str \| None` | ID of the robot, exception, or order to act on |
+| `parameters` | `dict` | Optional params (e.g. `{"target_location": [3, 4]}`) |
 
-## Observation Space (`WarehouseState`)
-
+### Observation Space (`WarehouseState`)
 | Field | Type | Description |
 |---|---|---|
-| `time_step` | int | Current simulation step |
-| `worker_availability` | int | Available human workers |
-| `inventory_status` | dict | Component name → stock level |
-| `robots` | list | List of `Robot` objects (id, location, status, battery_level) |
-| `blocked_paths` | list | List of `BlockedPath` objects (id, location, obstruction_type, severity) |
-| `active_exceptions` | list | List of `ExceptionIssue` objects requiring resolution |
+| `time_step` | `int` | Current simulation frame |
+| `worker_availability` | `int` | Available human workers |
+| `inventory_status` | `dict` | Component name → stock level |
+| `robots` | `list` | Active system robots (battery & status) |
+| `blocked_paths` | `list` | Currently inaccessible zones |
+| `active_exceptions` | `list` | Errors in the warehouse requiring intervention |
 
-## Task Scenarios
+---
 
-| Task | Description | Success Criteria |
-|---|---|---|
-| `easy` | Single shipment delay → locate component, reroute order | All exceptions resolved, inventory above threshold |
-| `medium` | Inventory shortage → verify stock, restock, notify | Easy criteria + all inventory above medium threshold |
-| `hard` | Cascading robot failure → dispatch maintenance, clear aisle, reroute | Medium criteria + all robots active, battery above threshold |
-
-## Reward
+## 📊 Reward Logistics
 
 Reward is strictly bounded in `[0.0, 1.0]` per episode using a **progress-delta** method:
-
-- Each step: `reward = current_progress − previous_progress`
-- `progress` = fraction of initial exceptions resolved ∈ [0.0, 1.0]
 - All exceptions resolved → total episode reward = `1.0`
-- No progress made → total episode reward = `0.0`
-
-## Project Structure
-
-```
-warehouse-logistics-v1/
-├── README.md               # This file
-├── openenv.yaml            # OpenEnv manifest
-├── Dockerfile              # Container image definition
-├── app.py                  # FastAPI Server + Telemetry Stream
-├── app/                    # React Frontend Source (Dashboard)
-├── dist/                   # Built production bundle (ignored by git)
-├── inference.py            # Hackathon evaluation script
-├── environment.py          # Core RL environment logic
-├── models.py               # Pydantic schemas (Action & Observation)
-├── tasks.py                # Per-difficulty graders (easy/medium/hard)
-├── utils.py                # Config loading, collision detection
-├── requirements.txt        # Python dependencies
-├── pyproject.toml          # Package metadata
-└── configs/
-    ├── openenv.yaml        # OpenEnv manifest
-    ├── warehouse_map.json  # Grid layout, dimensions, charging stations
-    ├── scenarios.yaml      # Per-scenario initial conditions
-    ├── easy.yaml           # Task config reference (easy)
-    ├── medium.yaml         # Task config reference (medium)
-    └── hard.yaml           # Task config reference (hard)
-```
-
-## Learn More
-
-- [OpenEnv Documentation](https://github.com/meta-pytorch/OpenEnv)
-- [Meta PyTorch OpenEnv Hackathon](https://github.com/meta-pytorch/OpenEnv/blob/main/README.md)
+- Partial resolving maps incrementally towards reward goals!

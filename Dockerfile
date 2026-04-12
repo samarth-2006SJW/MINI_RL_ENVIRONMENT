@@ -3,11 +3,11 @@
 # ============================================================
 FROM node:18-slim AS builder
 
-WORKDIR /app
-COPY package.json package-lock.json* ./
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install
 
-COPY . .
+COPY frontend/ .
 RUN npm run build
 
 # ============================================================
@@ -26,6 +26,7 @@ RUN useradd -m -u 1000 appuser
 
 # Set the working directory inside the container
 WORKDIR /app
+ENV PYTHONPATH=/app
 
 # ============================================================
 # Stage 3: Dependency Installation
@@ -41,7 +42,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ============================================================
 COPY --chown=appuser:appuser . .
 # Overwrite the dist directory with the one built in Stage 1
-COPY --from=builder --chown=appuser:appuser /app/dist ./dist
+COPY --from=builder --chown=appuser:appuser /app/frontend/dist ./frontend/dist
 
 # ============================================================
 # Stage 5: Runtime Configuration
@@ -54,4 +55,4 @@ EXPOSE 7860
 USER appuser
 
 # Start the FastAPI server via Uvicorn on the required port
-CMD ["python", "app.py"]
+CMD ["python", "backend/api/app.py"]
