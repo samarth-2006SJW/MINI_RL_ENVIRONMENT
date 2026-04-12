@@ -1,4 +1,4 @@
-import { Home, Play, BookOpen, Warehouse, Settings } from "lucide-react";
+import { Home, Play, BookOpen, Warehouse } from "lucide-react";
 
 // Only 3 real sections that actually work
 const navItems = [
@@ -69,12 +69,9 @@ const DashboardSidebar = ({ activeSection, onNavigate }: DashboardSidebarProps) 
 
       {/* Episode Reward */}
       <div className="mx-4 mb-4 glass-card p-3 glow-primary">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-            Max Reward
-          </p>
-          <Settings className="w-3 h-3 text-muted-foreground" />
-        </div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
+          Max Reward
+        </p>
         <p className="text-3xl font-heading font-bold text-primary">1.000</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">per episode</p>
       </div>

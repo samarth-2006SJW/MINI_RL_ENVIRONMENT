@@ -86,7 +86,7 @@ const SimulationDashboard = () => {
 
               if (data.terminated) {
                  setIsRunning(false);
-                 setActionLog(prev => [...prev, "[SYS] Simulation Halted or Target Reached."]);
+                 setActionLog(prev => [...prev, "[SYS] ✓ Target Reached — All objectives resolved."]);
               }
             } catch (err) {
               console.error("Failed to parse SSE JSON:", err);
