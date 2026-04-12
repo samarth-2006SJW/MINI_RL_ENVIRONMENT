@@ -6,7 +6,7 @@ from pathlib import Path
 import openai
 import sys
 
-root_dir = str(Path(__file__).resolve().parent.parent)
+root_dir = str(Path(__file__).resolve().parent)  # repo root
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
@@ -61,8 +61,8 @@ def _safe_action_from_model(client: openai.OpenAI, env: WarehouseEnvironment) ->
 def _run_task(client: openai.OpenAI, root: Path, task_name: str, scenario: str) -> None:
     """Run a single task episode and emit [START] / [STEP] / [END] structured logs."""
     env = WarehouseEnvironment(
-        str(root / "configs" / "warehouse_map.json"),
-        str(root / "configs" / "scenarios.yaml"),
+        str(root / "backend" / "configs" / "warehouse_map.json"),
+        str(root / "backend" / "configs" / "scenarios.yaml"),
         scenario,
     )
 
